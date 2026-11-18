@@ -1,15 +1,15 @@
 # BUILD STATUS - Daily SIM Caller
 
-**Status document version:** 1.0  
+**Status document version:** 1.1  
 **Last update:** 2026-11-18  
-**Source revision:** Staging snapshot from `DailySIMCaller_AndroidStudio_Fixed.zip`; no GitHub remote, commit SHA, release tag, or CI run yet.  
+**Source revision:** GitHub `main` source import `ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039`, copied from the preserved `DailySIMCaller_GitHub_Ready_2026-11-18.zip` archive without app logic edits. No signed release. CI run #1 was in progress when checked.  
 **Read first:** [START_HERE.md](START_HERE.md)
 
 ## Snapshot / what is actually working
 
 | Area | Evidence available | Status |
 | --- | --- | --- |
-| Android Studio source project | Repaired project ZIP preserved here; package `com.example.dailysimcaller` | **Present** |
+| Android Studio source project | Package `com.example.dailysimcaller`; original ZIP preserved in ChatGPT Library; source imported into private GitHub `main` | **Source present in GitHub; new build unverified** |
 | Build | User screenshot showed **BUILD SUCCESSFUL** on 2026-11-18 | **User-verified for that local snapshot**, not rerun here |
 | App installation/open | User showed app open on Cloud Mobile C9/C9 Prime | **User-verified** |
 | CSV document picker / refresh | User reported CSV refresh now works after connecting Google Drive CSV | **User-reported working**; not yet central live URL |
@@ -21,7 +21,7 @@
 | 20 completed cycles and logs | Not demonstrated by current testing | **Not implemented/verified** |
 | Direct signed APK download | No signed release/link supplied | **Not implemented** |
 | Automatic device power-off | Stock Android does not expose a regular app shutdown API | **Blocked pending OEM integration research** |
-| GitHub remote and CI | Connector not installed/connected; workflow prepared locally | **Not published; CI not run** |
+| GitHub remote and CI | Private repo connected, 56 source/support files committed and verified in GitHub; CI workflow activated on push | **Source import complete; first CI run in progress at last check** |
 
 **Important distinction:** BUILD SUCCESSFUL proves compilation of the project seen in Android Studio; it does not prove SIM call timing, unattended operation, or the right behavior after a reboot. This repository packaging step added documentation and CI configuration only, not telephony feature fixes.
 
@@ -56,8 +56,8 @@ DailySIMCaller/
 
 ## Next steps, in order
 
-1. **Connect GitHub and create a private `daily-sim-caller` repository.** Import this structured snapshot as the initial commit. Do not publish real destination numbers or signing credentials.
-2. **Run GitHub Actions CI** (`testDebugUnitTest`, `assembleDebug`) and fix only errors discovered by that build. Check SDK and JDK compatibility rather than blindly upgrading versions.
+1. **Done: GitHub connected and baseline source imported.** Private repository `marinesdude05/DailySIMCaller`, commit `ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039` (56 imported files). No real destination numbers or signing keys in the archive.
+2. **Inspect GitHub Actions run #1** ([Android CI](https://github.com/marinesdude05/DailySIMCaller/actions/runs/44377773261)), triggered by the baseline import. At last check its status was `in_progress`; inspect final logs and fix only confirmed failures. Check SDK/JDK compatibility before changing versions.
 3. **Test one full calling cycle on one C9** with company-owned/consented endpoints. Record exact Android build, role permissions, log output, and measured durations.
 4. Implement direct HTTPS CSV fetch and version display, then confirm updates across a pilot pair of phones.
 5. Add persistent cycle tracking/20-cycle state, installer flow, and completion workflow; pilot 2 -> 5 -> 20+ devices.
@@ -67,7 +67,8 @@ DailySIMCaller/
 | Date | Revision | Change | Verification | Remaining issue |
 | --- | --- | --- | --- | --- |
 | 2026-11-18 | Baseline imported | Retained fixed Android project; earlier repair included receiver, minimal dialer, call queue and CSV picker | Prior Android Studio screenshot: BUILD SUCCESSFUL; CSV refresh reported by operator | Still no tested full call sequence |
-| 2026-11-18 | Docs / repository preparation (this snapshot) | Created START HERE, BUILD STATUS, engineering notes, test matrix, release process, gitignore rules and CI workflow; moved only blank example CSV and historical README | Folder/manifest references and ZIP content inspected; no Android build here | Connect GitHub, run CI, test on device |
+| 2026-11-18 | Docs / repository preparation | Created START HERE, BUILD STATUS, engineering notes, test matrix, release process, gitignore rules and CI workflow; kept only blank example CSV | Archive inspected; no Android build during packaging | Publish source and verify CI |
+| 2026-11-18 | `ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039` | Imported 56 original Android project source/support files into GitHub; preserved current README and living documents; includes binary Gradle wrapper and icons, executable Gradle script | GitHub tree inspected (all source paths present); baseline Kotlin and CI workflow readable; CI run #1 launched and running at last check | Determine CI result, fix only reproducible problems, then hardware call tests |
 
 ## Required update block for every subsequent change
 
@@ -87,7 +88,9 @@ Copy these fields into the change log or a new section before closing the task:
 After GitHub is connected, read both living files **at the beginning of each coding task**, change code + tests in a small commit, then update `BUILD_STATUS.md` and applicable milestones in `START_HERE.md` **before reporting a change as saved**. Do not claim that an unsynced local Android Studio file was committed, or that a background auto-save is active. No connector or workflow can infer local edits that were never pushed.
 
 ## GitHub synchronization — 2026-11-18
-- **GitHub repository:** `marinesdude05/DailySIMCaller` (private).
-- **Access:** GitHub App repository access confirmed; documentation transfer started.
-- **Source code:** Original source remains preserved in `DailySIMCaller_GitHub_Ready_2026-11-18.zip` in the ChatGPT Library. A GitHub source-code import and independent CI build remain unverified; do not treat the repository as a buildable source checkout yet.
-- **Testing:** No new Android build, call sequence, automatic hang-up, schedule, or shutdown tests were run during this documentation transfer.
+- **GitHub repository:** [`marinesdude05/DailySIMCaller`](https://github.com/marinesdude05/DailySIMCaller) (private), default branch `main`.
+- **Baseline source commit:** [`ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039`](https://github.com/marinesdude05/DailySIMCaller/commit/ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039). Imported **56** original source/support files (45 text, 11 binary), preserving app logic. GitHub's recursive tree and representative Kotlin, Gradle wrapper and CI workflow paths were verified by read-back.
+- **Original backup:** `DailySIMCaller_GitHub_Ready_2026-11-18.zip` remains in the ChatGPT Library folder `Daily SIM Caller - Master Project`.
+- **CI:** [Android CI run #1](https://github.com/marinesdude05/DailySIMCaller/actions/runs/44377773261) started on the import push and was `in_progress` at the last check. A passing debug build and unit tests are **not yet confirmed**.
+- **Testing:** No new C9 call sequence, automatic hang-up, schedule, or shutdown tests were performed during import. Earlier local build/CSV observations remain user-reported and separate.
+- **Process:** Use this document and `START_HERE.md` as living files; local Android Studio edits do not automatically reach GitHub without a commit/push.

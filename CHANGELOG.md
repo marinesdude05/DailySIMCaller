@@ -4,6 +4,10 @@ Track releases and operator-visible changes here. For the detailed evidence/veri
 
 ## Unreleased - 2026-11-18
 
+- Imported the preserved Android Studio source baseline to the private GitHub repository in commit `ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039` (56 source/support files, no application logic changes).
+- Verified the GitHub file tree and representative Kotlin, Gradle wrapper, and CI workflow paths.
+- GitHub Actions Android CI run #1 was started by the import push; result was pending at the documentation update.
+
 - Established GitHub-ready folder organization and living project documents.
 - Added initial CI workflow and Android engineering/test/release documentation.
 - Preserved the last project ZIP that was reported to build and open on a C9; no telephony runtime changes in this documentation revision.

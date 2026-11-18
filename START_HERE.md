@@ -1,9 +1,9 @@
 # START HERE - Daily SIM Caller
 
 **Project:** Daily SIM Caller - Cloud Mobile C9 device stress testing  
-**Plan version:** 1.0 | **Last reviewed:** 2026-11-18  
+**Plan version:** 1.1 | **Last reviewed:** 2026-11-18  
 **Read next:** [BUILD_STATUS.md](BUILD_STATUS.md)  
-**Source of truth:** This repository after it is connected to GitHub. Until then, this project ZIP is a staging snapshot; no cloud repository is linked.
+**Source of truth:** Private GitHub repository [`marinesdude05/DailySIMCaller`](https://github.com/marinesdude05/DailySIMCaller), branch `main`. Source baseline commit `ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039`. The ZIP in ChatGPT Library remains the original backup.
 
 ## 1. Goal in plain English
 
@@ -32,8 +32,8 @@ We need **up to 20 independent test cycles per device during approximately 3 mon
 
 | ID | Milestone | Acceptance test | Current state |
 | --- | --- | --- | --- |
-| M0 | Stable baseline and documentation | Compiling snapshot archived, source identifiable, START HERE and BUILD STATUS available | **Partially complete** |
-| M1 | GitHub source control and CI | Private repository; clean commit; CI assembles debug APK and runs unit tests | **Not started** |
+| M0 | Stable baseline and documentation | Compiling snapshot archived, source identifiable, START HERE and BUILD STATUS available | **Complete for source/document archive**; prior local build was user-reported, not rerun from GitHub |
+| M1 | GitHub source control and CI | Private repository; clean commit; CI assembles debug APK and runs unit tests | **Partially complete** — private source import verified; CI run #1 launched, result pending at time of update |
 | M2 | Fast APK installation | Signed versioned APK loads from one short HTTPS link onto a reset C9; upgrade works | **Not started** |
 | M3 | Shared updated CSV | Fresh install and previously connected phones fetch same current CSV and display version/refresh errors | **Partially complete** (manual Drive picker refresh only) |
 | M4 | Supported call session management | One-phone controlled test of connect, duration, hangup, next, pause, cancellation, and errors | **Unverified** |
@@ -46,7 +46,7 @@ Each milestone stays **Unverified** or **Partially complete** until there is a r
 
 ## 5. Approved architecture
 
-- **Code:** Kotlin, Jetpack Compose, Android Gradle project (existing package `com.example.dailysimcaller`). Keep source local for Android Studio; GitHub stores source and history when linked.
+- **Code:** Kotlin, Jetpack Compose, Android Gradle project (existing package `com.example.dailysimcaller`). Keep an Android Studio working copy local; GitHub now stores the source baseline and commit history. Local edits still require an explicit Git commit and push.
 - **Distribution:** Versioned release APK signed with a private keystore; a stable HTTPS page/URL (Cloudflare is a candidate). Never commit the keystore or passwords. Android sideload install confirmation cannot be bypassed by a regular application.
 - **CSV:** One canonical endpoint; preferably authenticated when lists include nonpublic numbers. Version with an ETag/hash and `last-fetched` timestamp. Android's Drive document picker may serve cached copies and is not always-live synchronization.
 - **Scheduler:** Supported alarm/task APIs, explicit alarm permissions where justified, foreground processing only in legally supported situations, lifecycle-safe state.
