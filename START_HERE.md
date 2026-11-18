@@ -1,7 +1,7 @@
 # START HERE - Daily SIM Caller
 
 **Project:** Daily SIM Caller - Cloud Mobile C9 device stress testing  
-**Plan version:** 1.1 | **Last reviewed:** 2026-11-18  
+**Plan version:** 1.2 | **Last reviewed:** 2026-11-18  
 **Read next:** [BUILD_STATUS.md](BUILD_STATUS.md)  
 **Source of truth:** Private GitHub repository [`marinesdude05/DailySIMCaller`](https://github.com/marinesdude05/DailySIMCaller), branch `main`. Source baseline commit `ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039`. The ZIP in ChatGPT Library remains the original backup.
 
@@ -33,7 +33,7 @@ We need **up to 20 independent test cycles per device during approximately 3 mon
 | ID | Milestone | Acceptance test | Current state |
 | --- | --- | --- | --- |
 | M0 | Stable baseline and documentation | Compiling snapshot archived, source identifiable, START HERE and BUILD STATUS available | **Complete for source/document archive**; prior local build was user-reported, not rerun from GitHub |
-| M1 | GitHub source control and CI | Private repository; clean commit; CI assembles debug APK and runs unit tests | **Partially complete** — private source import verified; initial CI runs failed during Android SDK setup (`tools` package); SDK action updated to v4 and CI rerun pending |
+| M1 | GitHub source control and CI | Private repository; clean commit; CI assembles debug APK and runs unit tests | **Complete** — private source committed; [CI run #3](https://github.com/marinesdude05/DailySIMCaller/actions/runs/44378192800) passed unit tests, assembled debug APK and uploaded artifact. Hardware testing is a separate milestone. |
 | M2 | Fast APK installation | Signed versioned APK loads from one short HTTPS link onto a reset C9; upgrade works | **Not started** |
 | M3 | Shared updated CSV | Fresh install and previously connected phones fetch same current CSV and display version/refresh errors | **Partially complete** (manual Drive picker refresh only) |
 | M4 | Supported call session management | One-phone controlled test of connect, duration, hangup, next, pause, cancellation, and errors | **Unverified** |

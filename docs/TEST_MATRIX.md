@@ -4,7 +4,7 @@ Test only with company-owned or explicitly authorized endpoints. Capture firmwar
 
 | Case | Procedure | Pass criteria | Status |
 | --- | --- | --- | --- |
-| T01 Build | Run `:app:testDebugUnitTest :app:assembleDebug` | All tasks pass | Prior screenshot build success; CI not run |
+| T01 Build | Run `:app:testDebugUnitTest :app:assembleDebug` | All tasks pass | **Passed** in [GitHub Actions #3](https://github.com/marinesdude05/DailySIMCaller/actions/runs/44378192800) on `a0fd864f91daf140fd094ae5608ab097faf030cb` |
 | T02 Install | Open versioned APK HTTPS link on reset C9 | App installed with normal Android confirmation in minimal steps | Not tested |
 | T03 Upgrade | Update from signed APK of same app/signing identity | Settings persist and app opens | Not tested |
 | T04 CSV sync | Change canonical authorized list, refresh on old and new C9 | Same hash, count and version; stale failure visible | Drive refresh reported; central sync not tested |
