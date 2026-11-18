@@ -1,0 +1,31 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Generated artifacts and credentials
+**/build/
+*.apk
+*.aab
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+.env
+.env.*
+
+# Real destination-number lists and local test results should never be committed
+/data/
+/test-results/
+!samples/phone_numbers.example.csv
