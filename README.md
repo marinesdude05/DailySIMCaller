@@ -14,7 +14,7 @@ The complete original Android Studio source project was imported into this priva
 
 The original source ZIP is retained separately in ChatGPT Library at `Daily SIM Caller - Master Project/DailySIMCaller_GitHub_Ready_2026-11-18.zip`.
 
-**Import verified; build not yet verified.** The first [GitHub Actions Android CI run](https://github.com/marinesdude05/DailySIMCaller/actions/runs/44377773261) began after the import. Check its final result before treating the GitHub source as a tested build. Runtime call control, unattended triggers, and shutdown remain unverified.
+**Import verified; build not yet verified.** The first two [GitHub Actions Android CI runs](https://github.com/marinesdude05/DailySIMCaller/actions) failed **before compilation** while an outdated SDK setup action tried to install the retired `tools` package. The workflow has been updated to `android-actions/setup-android@v4`; check its subsequent run before treating the GitHub source as a tested build. Runtime call control, unattended triggers, and shutdown remain unverified.
 
 ## Build and development
 

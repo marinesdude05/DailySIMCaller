@@ -2,7 +2,7 @@
 
 **Status document version:** 1.1  
 **Last update:** 2026-11-18  
-**Source revision:** GitHub `main` source import `ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039`, copied from the preserved `DailySIMCaller_GitHub_Ready_2026-11-18.zip` archive without app logic edits. No signed release. CI run #1 was in progress when checked.  
+**Source revision:** GitHub `main` source import `ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039`, copied from the preserved `DailySIMCaller_GitHub_Ready_2026-11-18.zip` archive without app logic edits. No signed release. CI runs #1 and #2 failed during Android SDK setup (before Kotlin compilation). CI workflow updated from `android-actions/setup-android@v3` to `@v4`; rerun pending.  
 **Read first:** [START_HERE.md](START_HERE.md)
 
 ## Snapshot / what is actually working
@@ -21,7 +21,7 @@
 | 20 completed cycles and logs | Not demonstrated by current testing | **Not implemented/verified** |
 | Direct signed APK download | No signed release/link supplied | **Not implemented** |
 | Automatic device power-off | Stock Android does not expose a regular app shutdown API | **Blocked pending OEM integration research** |
-| GitHub remote and CI | Private repo connected, 56 source/support files committed and verified in GitHub; CI workflow activated on push | **Source import complete; first CI run in progress at last check** |
+| GitHub remote and CI | Private repo connected, 56 source/support files committed and verified in GitHub; CI workflow activated on push | **Source import complete; CI setup failed on retired SDK `tools` package; workflow fix committed, rerun pending** |
 
 **Important distinction:** BUILD SUCCESSFUL proves compilation of the project seen in Android Studio; it does not prove SIM call timing, unattended operation, or the right behavior after a reboot. This repository packaging step added documentation and CI configuration only, not telephony feature fixes.
 
@@ -57,7 +57,7 @@ DailySIMCaller/
 ## Next steps, in order
 
 1. **Done: GitHub connected and baseline source imported.** Private repository `marinesdude05/DailySIMCaller`, commit `ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039` (56 imported files). No real destination numbers or signing keys in the archive.
-2. **Inspect GitHub Actions run #1** ([Android CI](https://github.com/marinesdude05/DailySIMCaller/actions/runs/44377773261)), triggered by the baseline import. At last check its status was `in_progress`; inspect final logs and fix only confirmed failures. Check SDK/JDK compatibility before changing versions.
+2. **Inspect GitHub Actions run #1** ([Android CI](https://github.com/marinesdude05/DailySIMCaller/actions/runs/44377773261)), triggered by the baseline import. Runs #1 and #2 failed in the Android SDK setup step because `setup-android@v3` requested the retired `tools` package. The workflow was updated to v4. Inspect the new rerun result; Android code has not yet been compiled by CI. Check SDK/JDK compatibility before changing versions.
 3. **Test one full calling cycle on one C9** with company-owned/consented endpoints. Record exact Android build, role permissions, log output, and measured durations.
 4. Implement direct HTTPS CSV fetch and version display, then confirm updates across a pilot pair of phones.
 5. Add persistent cycle tracking/20-cycle state, installer flow, and completion workflow; pilot 2 -> 5 -> 20+ devices.
@@ -68,7 +68,7 @@ DailySIMCaller/
 | --- | --- | --- | --- | --- |
 | 2026-11-18 | Baseline imported | Retained fixed Android project; earlier repair included receiver, minimal dialer, call queue and CSV picker | Prior Android Studio screenshot: BUILD SUCCESSFUL; CSV refresh reported by operator | Still no tested full call sequence |
 | 2026-11-18 | Docs / repository preparation | Created START HERE, BUILD STATUS, engineering notes, test matrix, release process, gitignore rules and CI workflow; kept only blank example CSV | Archive inspected; no Android build during packaging | Publish source and verify CI |
-| 2026-11-18 | `ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039` | Imported 56 original Android project source/support files into GitHub; preserved current README and living documents; includes binary Gradle wrapper and icons, executable Gradle script | GitHub tree inspected (all source paths present); baseline Kotlin and CI workflow readable; CI run #1 launched and running at last check | Determine CI result, fix only reproducible problems, then hardware call tests |
+| 2026-11-18 | `ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039` | Imported 56 original Android project source/support files into GitHub; preserved current README and living documents; includes binary Gradle wrapper and icons, executable Gradle script | GitHub tree inspected (all source paths present); baseline Kotlin and CI workflow readable; CI runs #1 and #2 failed at SDK setup (`sdkmanager tools`), before compilation; workflow correction made separately | Determine CI result, fix only reproducible problems, then hardware call tests |
 
 ## Required update block for every subsequent change
 
@@ -91,6 +91,12 @@ After GitHub is connected, read both living files **at the beginning of each cod
 - **GitHub repository:** [`marinesdude05/DailySIMCaller`](https://github.com/marinesdude05/DailySIMCaller) (private), default branch `main`.
 - **Baseline source commit:** [`ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039`](https://github.com/marinesdude05/DailySIMCaller/commit/ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039). Imported **56** original source/support files (45 text, 11 binary), preserving app logic. GitHub's recursive tree and representative Kotlin, Gradle wrapper and CI workflow paths were verified by read-back.
 - **Original backup:** `DailySIMCaller_GitHub_Ready_2026-11-18.zip` remains in the ChatGPT Library folder `Daily SIM Caller - Master Project`.
-- **CI:** [Android CI run #1](https://github.com/marinesdude05/DailySIMCaller/actions/runs/44377773261) started on the import push and was `in_progress` at the last check. A passing debug build and unit tests are **not yet confirmed**.
+- **CI:** [Run #1](https://github.com/marinesdude05/DailySIMCaller/actions/runs/44377773261) and [run #2](https://github.com/marinesdude05/DailySIMCaller/actions/runs/44377996661) both failed at Android SDK setup (`sdkmanager tools`: package removed), **before Kotlin compilation**. Changed only `.github/workflows/android-ci.yml` from `android-actions/setup-android@v3` to `@v4`, whose documented default avoids the retired package. A successful debug build/unit test remains **unverified**.
 - **Testing:** No new C9 call sequence, automatic hang-up, schedule, or shutdown tests were performed during import. Earlier local build/CSV observations remain user-reported and separate.
 - **Process:** Use this document and `START_HERE.md` as living files; local Android Studio edits do not automatically reach GitHub without a commit/push.
+
+## CI setup repair — 2026-11-18
+- **Problem:** GitHub Actions run #1 and run #2 failed before compilation because the SDK setup action invoked `sdkmanager tools`, and the retired `tools` package could not be located.
+- **Change:** Upgraded only `.github/workflows/android-ci.yml` from `android-actions/setup-android@v3` to `@v4`. No Android application source code changed.
+- **Verification:** Failure confirmed from GitHub Actions job steps and logs. The upstream action documentation states v4 no longer requests the retired package by default. CI result after this change is pending; do not mark M1 complete until unit tests and debug assembly pass.
+- **Next action:** Inspect the GitHub Actions run triggered by this workflow correction and log the final outcome.

@@ -33,7 +33,7 @@ We need **up to 20 independent test cycles per device during approximately 3 mon
 | ID | Milestone | Acceptance test | Current state |
 | --- | --- | --- | --- |
 | M0 | Stable baseline and documentation | Compiling snapshot archived, source identifiable, START HERE and BUILD STATUS available | **Complete for source/document archive**; prior local build was user-reported, not rerun from GitHub |
-| M1 | GitHub source control and CI | Private repository; clean commit; CI assembles debug APK and runs unit tests | **Partially complete** — private source import verified; CI run #1 launched, result pending at time of update |
+| M1 | GitHub source control and CI | Private repository; clean commit; CI assembles debug APK and runs unit tests | **Partially complete** — private source import verified; initial CI runs failed during Android SDK setup (`tools` package); SDK action updated to v4 and CI rerun pending |
 | M2 | Fast APK installation | Signed versioned APK loads from one short HTTPS link onto a reset C9; upgrade works | **Not started** |
 | M3 | Shared updated CSV | Fresh install and previously connected phones fetch same current CSV and display version/refresh errors | **Partially complete** (manual Drive picker refresh only) |
 | M4 | Supported call session management | One-phone controlled test of connect, duration, hangup, next, pause, cancellation, and errors | **Unverified** |
