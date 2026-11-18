@@ -1,6 +1,6 @@
 # BUILD STATUS - Daily SIM Caller
 
-**Status document version:** 1.2  
+**Status document version:** 1.3  
 **Last update:** 2026-11-18  
 **Source revision:** GitHub `main` source import `ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039`, copied from the preserved `DailySIMCaller_GitHub_Ready_2026-11-18.zip` archive without app logic edits. No signed release. CI runs #1 and #2 failed during Android SDK setup (before Kotlin compilation). CI workflow updated from `android-actions/setup-android@v3` to `@v4`; [run #3](https://github.com/marinesdude05/DailySIMCaller/actions/runs/44378192800) **passed**, including unit tests, debug APK assembly, and artifact upload.  
 **Read first:** [START_HERE.md](START_HERE.md)
@@ -15,8 +15,8 @@
 | CSV document picker / refresh | User reported CSV refresh now works after connecting Google Drive CSV | **User-reported working**; not yet central live URL |
 | Editable multiple-number list | UI showing valid-number count and settings | **UI present** |
 | Call length / pause controls | UI displayed 45s duration and 10s pause in user screenshot | **Settings UI present**, runtime accuracy unverified |
-| Run-now call queue | Existing source contains queue/service implementation | **Source present; device behavior unverified** |
-| Timed hangup / auto-next | Existing source contains in-call integration | **Unverified on device** |
+| Run-now call queue | Existing source contains queue/service implementation; operator directly confirmed C9 dialed first destination and reported a prior test worked overall | **First-number dialing operator-confirmed; additional details unrecorded** |
+| Timed hangup / auto-next | Operator said a previously run test was good, but did not independently report measured end time, auto-hangup, pause, or second-number transition | **Reported broadly successful; individual behaviors unverified** |
 | Daily trigger | Existing source has `DailyAlarm`, boot receiver, and reminder | **Reminder path/source present**; silent unattended runs not proven |
 | 20 completed cycles and logs | Not demonstrated by current testing | **Not implemented/verified** |
 | Direct signed APK download | No signed release/link supplied | **Not implemented** |
@@ -109,3 +109,12 @@ After GitHub is connected, read both living files **at the beginning of each cod
 - **Milestone:** M1 marked complete. M4 real SIM calling behavior remains unverified.
 - **Physical testing:** Not performed by ChatGPT; no direct connection to the C9 from this integration. Use a spare or backed-up C9 because GitHub's debug signing key may differ from the key used to install the existing app. Do not uninstall the working app merely to replace it without backing up settings.
 - **Next action:** On one authorized C9 with a valid SIM, exercise manual test using two owned/consented destinations. Verify number order, connected duration (e.g. 30 seconds), hangup, configured pause (e.g. 10 seconds), auto next number, and stop/cancel. Record actual behavior before advancing M4.
+
+## C9 operator test report — 2026-11-18
+- **Device:** Cloud Mobile C9 with the **previously installed working app**, not the newer GitHub Actions debug APK; the newer APK failed to install over the existing app (possible signing conflict, not diagnosed conclusively).
+- **CSV/settings:** Operator reported CSV refresh succeeded and confirmed **2 valid numbers**, **30-second call duration**, **10-second pause**. Exact CSV content is intentionally not stored here.
+- **Direct observation reported:** When asked whether Run Test Now started dialing the first number, operator answered **yes**.
+- **Prior test outcome:** Operator stated, **"Yeah, I ran the test before. Everything's good."** This is a broad, retrospective operator report, not a timestamped test log. Do **not** treat it as measured proof of 30-second hangup, 10-second pause, second-destination advancement, completion state, or repeatable 20-cycle persistence.
+- **Milestone:** M4 changed from unverified to **partially complete / operator-reported**; detailed call-flow acceptance remains open.
+- **Code changes / build tests:** None for this documentation update; GitHub CI run #3 remains the most recent established successful code-build baseline.
+- **Next work:** Preserve the working app and settings. Resolve signing/update strategy on a spare C9, then capture a timestamped two-destination controlled call test. Separately plan canonical HTTPS CSV synchronization; picker refresh is not proof of automatic live updates.
