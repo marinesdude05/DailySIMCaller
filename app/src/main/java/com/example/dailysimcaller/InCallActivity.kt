@@ -2,6 +2,7 @@ package com.example.dailysimcaller
 
 import android.os.Bundle
 import android.os.Build
+import android.view.WindowManager
 import android.telecom.Call
 import android.telecom.VideoProfile
 import androidx.activity.ComponentActivity
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.dp
 class InCallActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (Build.VERSION.SDK_INT >= 27) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -49,6 +51,14 @@ class InCallActivity : ComponentActivity() {
                     Text("Daily SIM Caller", style = MaterialTheme.typography.headlineMedium)
                     Text(call?.details?.handle?.schemeSpecificPart ?: "No active call")
                     Text("Call state: ${stateLabel(state)}")
+                    ConnectedCallTimer()
+                    OutlinedButton(
+                        enabled = SpeakerphoneControl.callPresent,
+                        onClick = { SpeakerphoneControl.toggle() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (SpeakerphoneControl.speakerOn)
+                        "Speaker ON - Turn OFF" else "Speaker OFF - Turn ON") }
+                    Text(SpeakerphoneControl.message)
                     if (call != null) {
                         if (state == Call.STATE_RINGING) {
                             Button(onClick = { call.answer(VideoProfile.STATE_AUDIO_ONLY) },

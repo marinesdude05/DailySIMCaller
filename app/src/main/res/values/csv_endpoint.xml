@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Live Google Sheets tab export. Anyone-with-link Viewer required for unauthenticated C9 fetches.
+         Do not place sensitive personal/customer lists in this publicly readable sheet. -->
+    <string name="csv_endpoint" translatable="false">https://docs.google.com/spreadsheets/d/11vTMIc9wVV3oi3BZi191BxulLwSaxBflq9ASr02PYuE/export?format=csv&amp;gid=174037873</string>
+</resources>

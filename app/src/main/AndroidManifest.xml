@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <uses-permission
         android:name="android.permission.CALL_PHONE" />
 
@@ -12,9 +15,6 @@
 
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
-
-    <uses-permission
-        android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <uses-permission
         android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -39,6 +39,13 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Optional: opt-in automatic startup after unlock requires default Home role. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
             <intent-filter>
@@ -69,6 +76,10 @@
                 android:value="true" />
 
             <meta-data
+                android:name="android.telecom.IN_CALL_SERVICE_CAR_MODE_UI"
+                android:value="false" />
+
+            <meta-data
                 android:name="android.telecom.IN_CALL_SERVICE_RINGING"
                 android:value="true" />
 
@@ -78,13 +89,27 @@
         </service>
 
         <service
+            android:name=".ShutdownAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:label="Daily SIM Caller shutdown helper">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/shutdown_accessibility_service" />
+        </service>
+
+        <service
             android:name=".CallSessionService"
             android:exported="false"
             android:foregroundServiceType="phoneCall" />
 
-        <receiver
-            android:name=".DailyCallReceiver"
-            android:exported="false" />
+        <service
+            android:name=".BootPreparationService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="true" />
 
         <receiver
             android:name=".BootReceiver"

@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Daily SIM Caller</string>
+    <string name="shutdown_service_description">Optional power-off helper: when you turn on automatic shutdown, the service opens the Android power menu after the last queued call and tries to select the Power off button. This service must be explicitly enabled, and may not work on every phone.</string>
 </resources>

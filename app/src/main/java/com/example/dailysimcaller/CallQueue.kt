@@ -88,6 +88,7 @@ object CallQueue {
         callSeconds = seconds
         pauseSeconds = pause
         running = true
+        ShutdownPowerHelper.queueStarted()
 
         dialNext()
 
@@ -105,6 +106,7 @@ object CallQueue {
             status = "Queue complete: $completed calls attempted"
 
             closeForegroundSession()
+            application?.let(ShutdownPowerHelper::queueFinished)
             return
         }
 
@@ -332,6 +334,7 @@ object CallQueue {
                     "$completed calls attempted"
 
             closeForegroundSession()
+            application?.let(ShutdownPowerHelper::queueFinished)
 
         } else {
 
@@ -363,6 +366,7 @@ object CallQueue {
     }
 
     fun stop(disconnectCurrent: Boolean = true) {
+        ShutdownPowerHelper.cancelPending()
 
         if (
             waitingForCall &&

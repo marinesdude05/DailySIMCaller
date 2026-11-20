@@ -1,29 +1,18 @@
 # Daily SIM Caller
 
-Kotlin / Jetpack Compose Android stress-test application for company-owned Cloud Mobile C9/C9 Prime phones.
+**Current approved source: v1.3.18 (version code 22).** The owner accepted this release on November 20, 2026. This repository contains the Android Studio project; it does not include a release signing key or a signed APK.
 
-## Start here
+- **Employees:** [Easy setup walkthrough](docs/EMPLOYEE_EASY_SETUP_v1.3.18.md)
+- **Installers and developers:** [START_HERE.md](START_HERE.md), [BUILD_STATUS.md](BUILD_STATUS.md)
+- **Release details:** [RELEASE_NOTES_v1.3.18.md](RELEASE_NOTES_v1.3.18.md), [CHANGELOG.md](CHANGELOG.md)
+- **Source archive in Drive:** [DailySIMCaller_v1.3.18_ClearerSetup_Source.zip](https://drive.google.com/file/d/1P9WIukorqJYajyOt2onau419sDpHRAH7/view?usp=drivesdk)
 
-1. [START HERE](START_HERE.md) — goals, daily operator workflow, acceptance milestones, and engineering rules.
-2. [BUILD STATUS](BUILD_STATUS.md) — verified source revision, tests, open issues, and incremental change history.
-3. [TEST MATRIX](docs/TEST_MATRIX.md) — repeatable C9 hardware test plan.
+## What it does
 
-## Repository baseline
+Daily SIM Caller loads an approved CSV list of phone numbers, can start a manual call run with **Call Now**, and supports optional calls after a restart when an administrator enables them. The app also has a four-step Android permission/helper setup and an optional after-queue power-off feature.
 
-The complete original Android Studio source project was imported into this private GitHub repository on **2026-11-18**, baseline commit [`ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039`](https://github.com/marinesdude05/DailySIMCaller/commit/ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039). This includes `app/`, Kotlin source, resources, tests, Gradle build/wrapper files, `.github/workflows/android-ci.yml`, and engineering documentation.
+## Safety and release status
 
-The original source ZIP is retained separately in ChatGPT Library at `Daily SIM Caller - Master Project/DailySIMCaller_GitHub_Ready_2026-11-18.zip`.
+The owner reports that the final build and device testing were completed. This repository update did **not** independently validate APK signing, installation, actual call behavior, restart calling, or shutdown on a physical phone. No production signing material or live phone-number data belongs in the repository.
 
-**Import verified; build not yet verified.** The first two [GitHub Actions Android CI runs](https://github.com/marinesdude05/DailySIMCaller/actions) failed **before compilation** while an outdated SDK setup action tried to install the retired `tools` package. The workflow has been updated to `android-actions/setup-android@v4`; check its subsequent run before treating the GitHub source as a tested build. Runtime call control, unattended triggers, and shutdown remain unverified.
-
-## Build and development
-
-Clone this repository to a **local** folder on your Windows development PC, open its root (containing `settings.gradle.kts`) in Android Studio, then allow Gradle synchronization.
-
-- Windows build: `gradlew.bat :app:testDebugUnitTest :app:assembleDebug`
-- macOS/Linux build: `./gradlew :app:testDebugUnitTest :app:assembleDebug`
-- CI: [Android CI workflow](.github/workflows/android-ci.yml)
-
-After each verified change: update tests, record the exact code revision and results in BUILD STATUS, and update START HERE when a milestone changes. Commit and push the revision; local saves are not automatically pushed.
-
-**Safety and release limitations:** Use controlled, authorized test destinations only. Ordinary Android apps cannot silently bypass install permissions, become the default dialer without role authorization, or reliably power off stock Android devices. Do not commit real destination number lists or signing secrets.
+**Note:** Android can only grant Phone, Home and Accessibility permissions after the user makes the selection on the device. **Opened** means a settings button was visited; **✓ Done** means Android confirmed the setting.

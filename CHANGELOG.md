@@ -1,16 +1,12 @@
-# Changelog
+# Change log
 
-Track releases and operator-visible changes here. For the detailed evidence/verification log, see [BUILD_STATUS.md](BUILD_STATUS.md).
+## v1.3.18 — Approved final source (November 20, 2026)
+- Clarified Step 1: “If Android says access is restricted, tap Close, return here, and tap Next.”
+- Put **Power Menu** under **Set Home App**. It opens the Android power menu for a manual choice; it does not shut down automatically.
+- **Fix Permissions** dims and reads **Opened** when tapped; Android-verified settings show **✓ Done**.
+- Preserved the v1.3.17 four-step setup/restart flow, connected-call timer, manual calls, CSV sync, optional restart calling, and admin power-off setting.
+- Added an easy employee walkthrough and updated repo release guidance. No app-behavior changes were made for this documentation handoff.
 
-## Unreleased - 2026-11-18
+## Earlier history
 
-- Fixed CI environment setup: replaced `android-actions/setup-android@v3` with v4 after two failed runs attempting to install the retired Android SDK `tools` package. App behavior unchanged; CI build verification remains pending.
-
-- Imported the preserved Android Studio source baseline to the private GitHub repository in commit `ee9288f53b7b5d9b6c037c2e24fe1cc69ef83039` (56 source/support files, no application logic changes).
-- Verified the GitHub file tree and representative Kotlin, Gradle wrapper, and CI workflow paths.
-- GitHub Actions Android CI run #1 was started by the import push; result was pending at the documentation update.
-
-- Established GitHub-ready folder organization and living project documents.
-- Added initial CI workflow and Android engineering/test/release documentation.
-- Preserved the last project ZIP that was reported to build and open on a C9; no telephony runtime changes in this documentation revision.
-- Stored blank sample CSV separately from any real centrally managed phone list.
+Earlier per-version release notes are kept in the root (`RELEASE_NOTES_v1.3.7.md` through `RELEASE_NOTES_v1.3.17.md`). See those files for historical release details.
