@@ -33,6 +33,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
@@ -84,6 +88,9 @@ class MainActivity : ComponentActivity() {
     private var resumeCount by mutableIntStateOf(0)
     private var bootSignalCount by mutableIntStateOf(0)
     private var isVisible = false
+    // Kept on Activity lifecycle, not the Compose coroutine scope: recomposition
+    // must not accidentally cancel a network retry and report a false failure.
+    private var callRetryJob: Job? = null
     private val bootReadyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent?) {
             if (intent?.action == StartupMode.ACTION_BOOT_READY) bootSignalCount++
@@ -110,6 +117,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         isVisible = false
+        // No delayed call may start while the app is hidden. If this was an
+        // authorized boot attempt, its one-shot marker is retained for next Home resume.
+        callRetryJob?.cancel()
         super.onPause()
     }
 
@@ -147,8 +157,8 @@ class MainActivity : ComponentActivity() {
             var backgroundBootPrep by remember { mutableStateOf(BootPreparation.isEnabled(this@MainActivity)) }
             var lastBootPrep by remember { mutableStateOf(prefs.getString(BootPreparation.RESULT, "Not yet run").orEmpty()) }
             var autoOnBoot by remember { mutableStateOf(StartupMode.enabled(this@MainActivity)) }
-            var isPreparingBootCalls by remember { mutableStateOf(false) }
-            var cancelBootCalls by remember { mutableStateOf(false) }
+            var retryingCalls by remember { mutableStateOf(false) }
+            var retryingBoot by remember { mutableStateOf(false) }
             // A one-time guided flow automatically OPENS each Android permission/role screen.
             // It never grants a permission, role, or accessibility access itself.
             var guidedSetupActive by remember { mutableStateOf(false) }
@@ -202,6 +212,8 @@ class MainActivity : ComponentActivity() {
                         .apply()
                     status = "Loaded ${refreshed.size} current phone numbers"
                     refreshed
+                } catch (e: CancellationException) {
+                    throw e // Screen changes are not CSV/network errors.
                 } catch (e: Exception) {
                     status = "Number-list refresh failed. No calls started: ${e.message ?: "Unable to read file"}"
                     null // Keep last good list visible, but never call it when refresh failed.
@@ -212,34 +224,120 @@ class MainActivity : ComponentActivity() {
 
             // Foreground phoneCall service starts only while an activity is visible,
             // never from BOOT_COMPLETED or a background job.
-            suspend fun runQueue(fresh: List<String>, callDuration: Int, callPause: Int, boot: Boolean = false) {
-                try {
+            suspend fun runQueue(fresh: List<String>, callDuration: Int, callPause: Int, boot: Boolean = false): Boolean {
+                return try {
                     ContextCompat.startForegroundService(
                         this@MainActivity,
                         Intent(this@MainActivity, CallSessionService::class.java)
                     )
                     val started = CallQueue.start(this@MainActivity, fresh, callDuration, callPause)
-                    if (!started) {
-                        stopService(Intent(this@MainActivity, CallSessionService::class.java))
-                    }
+                    if (!started) stopService(Intent(this@MainActivity, CallSessionService::class.java))
                     status = if (started) {
                         if (boot) "Startup: dialing ${fresh.size} permitted numbers after unlock"
                         else "Starting ${fresh.size} user-requested queued calls"
                     } else "Queue could not start. Check the default phone role."
+                    started
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     stopService(Intent(this@MainActivity, CallSessionService::class.java))
                     status = "Unable to start call session: ${e.message ?: "Unknown error"}"
+                    false
                 }
             }
 
-            // BOOT_COMPLETED only arms a one-shot flag. The user-selected Home activity
-            // must be visible/unlocked and retain the actual Phone/Home roles to place calls.
-            // The optional shutdown Accessibility service is not a calling permission.
+            fun canRetryCall(boot: Boolean): Boolean {
+                if (!isVisible || CallQueue.running) return false
+                if (boot && (!StartupMode.isPending(this@MainActivity) ||
+                        !StartupMode.enabled(this@MainActivity) ||
+                        !StartupMode.isHomeApp(this@MainActivity))) return false
+                if (!StartupMode.isUnlocked(this@MainActivity) ||
+                    !StartupMode.isDefaultPhoneApp(this@MainActivity) ||
+                    checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED ||
+                    (Build.VERSION.SDK_INT >= 33 &&
+                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)) return false
+                return true
+            }
+
             fun bootReport(message: String) {
                 status = message
                 StartupMode.recordBootResult(this@MainActivity, message)
             }
 
+            fun startCallsWithRetry(boot: Boolean, callDuration: Int, callPause: Int) {
+                // A second tap, a Home resume, and a boot broadcast cannot create
+                // duplicate downloads or calls while one authorized run is pending.
+                if (callRetryJob?.isActive == true || CallQueue.running) return
+                // A deliberate manual run supersedes any pending post-boot run.
+                if (!boot) StartupMode.clearPending(this@MainActivity)
+                retryingCalls = true
+                retryingBoot = boot
+                val newJob = lifecycleScope.launch {
+                    val thisJob = coroutineContext[Job]
+                    try {
+                        val fresh = CallStartRetry.waitForFreshNumbers(
+                            shouldContinue = { canRetryCall(boot) },
+                            fetch = {
+                                // Wait for an ordinary screen refresh to finish; never
+                                // place a call from its cached result.
+                                while (isSyncing) delay(250L)
+                                isSyncing = true
+                                try {
+                                    if (remoteCsvUrl.isNotBlank()) {
+                                        val snapshot = RemoteCsv.fetch(remoteCsvUrl)
+                                        numbers = snapshot.numbers.joinToString("\n")
+                                        csvRevision = snapshot.sha256Prefix
+                                        snapshot.numbers
+                                    } else if (csvUri.isNotBlank()) {
+                                        val fromDrive = withContext(Dispatchers.IO) { readDriveCsv(csvUri) }
+                                        numbers = fromDrive.joinToString("\n")
+                                        csvRevision = "Drive document picker"
+                                        fromDrive
+                                    } else numbers.lines().mapNotNull(PhoneCsv::cleanPhoneNumber).distinct()
+                                } finally { isSyncing = false }
+                            },
+                            onStatus = { message ->
+                                if (boot) bootReport("Startup: $message") else status = message
+                            }
+                        )
+                        if (fresh != null && canRetryCall(boot)) {
+                            val now = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.US)
+                                .format(java.util.Date())
+                            lastRefresh = now
+                            prefs.edit().putString("numbers", fresh.joinToString("\n"))
+                                .putString("last_csv_refresh", now)
+                                .putString("last_csv_revision", csvRevision).apply()
+                            // The boot flag stays pending through connection failures.
+                            // Consume it only after a real call run starts (or abort on
+                            // a non-network failure), never on a refresh attempt.
+                            val started = runQueue(fresh, callDuration, callPause, boot)
+                            if (boot) {
+                                StartupMode.clearPending(this@MainActivity)
+                                StartupMode.recordBootResult(this@MainActivity, status)
+                            }
+                            if (!started) status = "Could not start calls. Check the Phone app setting."
+                        } else if (boot && canRetryCall(boot)) {
+                            // Permanent CSV errors should not cause surprise retries.
+                            StartupMode.clearPending(this@MainActivity)
+                        }
+                    } catch (_: CancellationException) {
+                        // Leaving the screen cancels waiting. The boot marker stays
+                        // available for the next visible, unlocked Home resume.
+                    } finally {
+                        // A canceled old run cannot reset a newer run started on resume.
+                        if (callRetryJob === thisJob) {
+                            retryingCalls = false
+                            retryingBoot = false
+                            callRetryJob = null
+                        }
+                    }
+                }
+                callRetryJob = newJob
+            }
+
+            // BOOT_COMPLETED only arms a one-shot flag. The user-selected Home activity
+            // must be visible/unlocked and retain the actual Phone/Home roles to place calls.
+            // The optional shutdown Accessibility service is not a calling permission.
             LaunchedEffect(csvUri, resumeCount, bootSignalCount, autoOnBoot) {
                 if (resumeCount <= 0 || !isVisible) return@LaunchedEffect
                 lastBootPrep = prefs.getString(BootPreparation.RESULT, "Not yet run").orEmpty()
@@ -269,37 +367,17 @@ class MainActivity : ComponentActivity() {
                             bootReport("Startup skipped: no authorized CSV source configured")
                         }
                         else -> {
-                            // Consume before attempting any call; never dial twice per reboot.
-                            // A failed network refresh is reported and requires a new reboot
-                            // or an explicit Call Now, not an unplanned later retry.
-                            if (StartupMode.consumePending(this@MainActivity)) {
-                                val duration = prefs.getInt("call_seconds", 45)
-                                val pauseTime = prefs.getInt("pause_seconds", 10)
-                                if (duration !in 1..3600 || pauseTime !in 0..3600) {
-                                    bootReport("Startup skipped: invalid call duration or pause")
-                                } else {
-                                    cancelBootCalls = false
-                                    isPreparingBootCalls = true
-                                    try {
-                                        bootReport("Startup: refreshing authorized numbers before dialing")
-                                        val fresh = refreshCsv()
-                                        when {
-                                            cancelBootCalls -> bootReport("Startup calling canceled")
-                                            fresh == null -> bootReport("Startup skipped: number-list refresh failed; no calls placed. $status")
-                                            fresh.isEmpty() -> bootReport("Startup skipped: number list is empty")
-                                            else -> {
-                                                runQueue(fresh, duration, pauseTime, boot = true)
-                                                bootReport(status)
-                                            }
-                                        }
-                                    } finally {
-                                        isPreparingBootCalls = false
-                                    }
-                                }
+                            val duration = prefs.getInt("call_seconds", 45)
+                            val pauseTime = prefs.getInt("pause_seconds", 10)
+                            if (duration !in 1..3600 || pauseTime !in 0..3600) {
+                                StartupMode.clearPending(this@MainActivity)
+                                bootReport("Startup skipped: invalid call duration or pause")
+                            } else {
+                                startCallsWithRetry(true, duration, pauseTime)
                             }
                         }
                     }
-                } else if (remoteCsvUrl.isNotBlank() || csvUri.isNotBlank()) {
+                } else if (!retryingCalls && (remoteCsvUrl.isNotBlank() || csvUri.isNotBlank())) {
                     refreshCsv()
                 }
             }
@@ -637,7 +715,10 @@ class MainActivity : ComponentActivity() {
             val list = numbers.lines().mapNotNull(PhoneCsv::cleanPhoneNumber).distinct()
             val duration = seconds.toIntOrNull()
             val gap = pause.toIntOrNull()
-            val valid = list.isNotEmpty() && duration != null && duration in 1..3600 &&
+            // Allow Call Now to begin a network retry even on a fresh install
+            // where the first CSV download failed and no cached numbers exist.
+            val hasCallSource = remoteCsvUrl.isNotBlank() || csvUri.isNotBlank() || list.isNotEmpty()
+            val valid = hasCallSource && duration != null && duration in 1..3600 &&
                     gap != null && gap in 0..3600
 
             MaterialTheme {
@@ -864,20 +945,21 @@ class MainActivity : ComponentActivity() {
                         Text(setupLabel("Shut Down Helper", granted = powerAccessReady,
                             opened = accessibilitySettingsOpened))
                     }
-                    Button(enabled = valid && !CallQueue.running && !isSyncing, modifier = Modifier.fillMaxWidth(),
+                    Button(enabled = valid && !CallQueue.running && !retryingCalls,
+                        modifier = Modifier.fillMaxWidth(),
                         onClick = {
                             if (!requestDialerRole() || !requestNecessaryPermissions()) return@Button
                             persistSettings()
-                            scope.launch {
-                                val fresh = refreshCsv() ?: return@launch
-                                if (fresh.isEmpty()) {
-                                    status = "No phone numbers available"
-                                    return@launch
-                                }
-                                runQueue(fresh, duration!!, gap!!)
-                            }
+                            startCallsWithRetry(false, duration!!, gap!!)
                         }
                     ) { Text("Call Now") }
+                    if (retryingCalls) {
+                        OutlinedButton(onClick = {
+                            callRetryJob?.cancel()
+                            if (retryingBoot) StartupMode.clearPending(this@MainActivity)
+                            status = "Stopped trying. No new calls started."
+                        }, modifier = Modifier.fillMaxWidth()) { Text("Stop Trying") }
+                    }
 
                     HorizontalDivider()
                     Row(
@@ -923,7 +1005,8 @@ class MainActivity : ComponentActivity() {
                                     status = "Auto-calling opted in for future reboots. Android will guide Home and Phone roles. No calls start yet."
                                     beginGuidedSetup()
                                 } else {
-                                    cancelBootCalls = true
+                                    callRetryJob?.cancel()
+                                    StartupMode.clearPending(this@MainActivity)
                                     status = "Automatic calls disabled for future reboots"
                                 }
                             })
@@ -939,7 +1022,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         Button(onClick = {
-                            cancelBootCalls = true
+                            callRetryJob?.cancel()
                             StartupMode.clearPending(this@MainActivity)
                             if (CallQueue.running) CallQueue.stop()
                             status = "Pending startup sequence canceled and active queue stopped"

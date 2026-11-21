@@ -1,8 +1,14 @@
-# Daily SIM Caller — v1.3.18 (code 22)
+# Daily SIM Caller - v1.3.19 retry candidate (code 23)
 
-**Release disposition:** Owner approved v1.3.18 as final on November 20, 2026. The owner reports APK build and testing completed. Specific device-test evidence, signer identity, artifact checksum, and APK-to-source correspondence were not independently supplied or verified here.
+**Current deployed/owner-approved APK: v1.3.18.** v1.3.19 is source-only pending an Android Studio signed build and device test. No production install link has been changed.
 
-## Source verification
+## v1.3.19 checks
+
+- PASS - Standalone Kotlin retry tests: repeated DNS failure then success, cancellation, malformed list refusal, HTTP error classification.
+- PASS - Static integration checks and ZIP integrity.
+- NOT VERIFIED - Android Gradle build, APK signing, real network reconnection, phone dialing after reconnection, reboot queue, auto-power off.
+
+## Existing approved release
 
 - PASS — Android Studio source based on v1.3.17 FinalSetupRestart, with v1.3.18 setup wording/button changes.
 - PASS — Static source verification and source ZIP integrity from the v1.3.18 source creation step.
@@ -11,7 +17,6 @@
 
 ## Release handoff
 
-- Keep signed APK and its signing key under appropriate access control. Signing keys and private lists must not enter public GitHub.
-- Record final APK checksum, firmware/model, installation link and test outcome when available.
-- [Employee guide](docs/EMPLOYEE_EASY_SETUP_v1.3.18.md)
-- [Release notes](RELEASE_NOTES_v1.3.18.md)
+- Keep the v1.3.18 signed APK and signing key secure. Do not distribute v1.3.19 until tested.
+- [Retry details](RELEASE_NOTES_v1.3.19.md)
+- [Employee guide for currently approved version](docs/EMPLOYEE_EASY_SETUP_v1.3.18.md)
