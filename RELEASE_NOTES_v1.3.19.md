@@ -19,3 +19,9 @@ Built directly from the finalized v1.3.18 source. App versionCode **23**, versio
 - The new retry helper passed standalone Kotlin test cases covering repeated DNS failure then successful refresh, cancellation, malformed list refusal, and HTTP classification. Static integration checks and ZIP integrity are also run.
 - **Not verified:** Android Studio/Gradle compilation, signed APK, SIM dialing, OEM reboot behavior, real network reconnection, or physical shutdown. Test on a dedicated Cloud Mobile C9 with only authorized destinations before replacing the HBKInstall26 APK.
 - Build a new signed release APK in Android Studio using the same protected signing key as v1.3.18. Do **not** publish the source ZIP or debug APK as if it were the installed release.
+
+## Additional setup polish (November 22, 2026)
+
+- **Shut Down Helper** is immediately above the red **Power Menu** button.
+- Guided setup Step 3's button is now **Check Helper Next**; its permission-check behavior is unchanged.
+- These are interface-only updates to the v1.3.19 test candidate; no change to retry/calling/shutdown logic.

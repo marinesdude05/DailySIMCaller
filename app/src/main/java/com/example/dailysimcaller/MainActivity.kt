@@ -851,7 +851,7 @@ class MainActivity : ComponentActivity() {
                                                     status = "Shut Down Helper is not enabled yet. Use Fix Permissions if Android still blocks it."
                                                 }
                                             }
-                                        ) { Text("Check Helper") }
+                                        ) { Text("Check Helper Next") }
                                         OutlinedButton(
                                             modifier = Modifier.fillMaxWidth(),
                                             onClick = { restrictedHelperStep = 2 }
@@ -924,15 +924,6 @@ class MainActivity : ComponentActivity() {
                         Text(setupLabel("Set Home App", granted = homeReady,
                             opened = homeSettingsOpened))
                     }
-                    // This settings shortcut remains a test: opening the power menu does NOT shut down.
-                    Button(
-                        onClick = { ShutdownPowerHelper.testPowerMenu() },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFC62828),
-                            contentColor = Color.White
-                        )
-                    ) { Text("Power Menu") }
                     OutlinedButton(
                         onClick = {
                             accessibilitySettingsOpened = true
@@ -945,6 +936,15 @@ class MainActivity : ComponentActivity() {
                         Text(setupLabel("Shut Down Helper", granted = powerAccessReady,
                             opened = accessibilitySettingsOpened))
                     }
+                    // This settings shortcut remains a test: opening the power menu does NOT shut down.
+                    Button(
+                        onClick = { ShutdownPowerHelper.testPowerMenu() },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFC62828),
+                            contentColor = Color.White
+                        )
+                    ) { Text("Power Menu") }
                     Button(enabled = valid && !CallQueue.running && !retryingCalls,
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
