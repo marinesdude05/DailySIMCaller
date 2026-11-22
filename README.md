@@ -11,7 +11,7 @@
 
 The app loads an approved Google Sheets CSV number list and can place authorized calls through **Call Now**. With configured roles and opt-in, it can begin a call sequence after reboot/unlock. It retries temporary network failures before calling and never uses a stale list as fresh data.
 
-The main screen has a dark **Setup** checklist: Phone Permission, Notifications, Set Phone App, Set Home App, Battery Settings, Fix Permissions and Shut Down Helper. Green **✓** means Android confirmed access; orange **!** means check it. Fix Permissions is a shortcut without a verified yes/no status. The four-step guided setup remains available.
+The main screen has a dark **Setup** checklist. **Fix Permissions** now sits directly beneath **Help Me Set Up**, followed by Phone Permission, Notifications, Set Phone App, Set Home App and Shut Down Helper. The Battery Settings row was removed from the screen. Green **✓** means Android confirmed access; orange **!** means check it. Fix Permissions is a shortcut without a verified yes/no status. The four-step guided setup remains available.
 
 The **For Admin Only** section controls operational settings and is not password protected. Android permission changes require the phone owner's approval.
 
