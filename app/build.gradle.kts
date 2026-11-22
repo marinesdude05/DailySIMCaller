@@ -5,14 +5,12 @@ plugins {
 
 android {
     namespace = "com.example.dailysimcaller"
-    compileSdk {
-        version = release(37)
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
-        targetSdk = 37
+        targetSdk = 36
         versionCode = 23
         versionName = "1.3.19-auto-retry"
 
