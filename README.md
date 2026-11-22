@@ -1,14 +1,20 @@
 # Daily SIM Caller
 
-**Latest development source: v1.3.21 (version code 25)** — ordered permission setup.
+**Latest Android Studio source: v1.3.20 (code 24), test candidate.** The latest owner-approved, installed APK is **v1.3.18** until this new version is built, signed and tested on a phone.
 
-**Currently approved deployed release remains v1.3.18.** This source is **not** an installable, signed APK. Do **not** change the employee installation link `https://is.gd/HBKInstall26` until v1.3.21 has been built, tested and approved.
+- [New permission checklist release notes](RELEASE_NOTES_v1.3.20.md)
+- [Automatic-retry notes](RELEASE_NOTES_v1.3.19.md)
+- [Build and installation instructions](START_HERE.md)
+- [Employee guide for currently approved APK](docs/EMPLOYEE_EASY_SETUP_v1.3.18.md)
 
-- [v1.3.21 release notes](RELEASE_NOTES_v1.3.21.md)
-- [Easy setup guide for v1.3.21](docs/EMPLOYEE_EASY_SETUP_v1.3.21.md)
-- [Current build status](BUILD_STATUS.md)
-- [Existing employee guide for approved v1.3.18](docs/EMPLOYEE_EASY_SETUP_v1.3.18.md)
+## Current app
 
-Daily SIM Caller loads an approved Google Sheets CSV list, supports authorized **Call Now** and opted-in calls after reboot, and can retry temporary list-download failures while conditions allow. Android still requires the user to approve Phone, Home and Accessibility access manually. An empty or failed list never authorizes calls using stale numbers.
+The app loads an approved Google Sheets CSV number list and can place authorized calls through **Call Now**. With configured roles and opt-in, it can begin a call sequence after reboot/unlock. It retries temporary network failures before calling and never uses a stale list as fresh data.
 
-The source excludes signing material and phone-number data. Use the **same original signing key** when preparing an in-place update.
+The main screen has a dark **Setup** checklist: Phone Permission, Notifications, Set Phone App, Set Home App, Battery Settings, Fix Permissions and Shut Down Helper. Green **✓** means Android confirmed access; orange **!** means check it. Fix Permissions is a shortcut without a verified yes/no status. The four-step guided setup remains available.
+
+The **For Admin Only** section controls operational settings and is not password protected. Android permission changes require the phone owner's approval.
+
+## Release boundary
+
+This repository contains **source, not a signed production APK**. GitHub Actions cannot currently download the Android SDK specified by the project. Use Android Studio and the original signing identity, then test an authorized single-number call and restart before changing the live **HBKInstall26** installation link. Do not commit signing keys or real phone lists.

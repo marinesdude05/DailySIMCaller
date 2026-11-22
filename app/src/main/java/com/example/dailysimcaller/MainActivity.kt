@@ -14,7 +14,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.widget.Toast
+import android.os.PowerManager
 import android.provider.Settings
 import android.telecom.TelecomManager
 import androidx.activity.ComponentActivity
@@ -23,11 +23,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.*
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardOptions
@@ -181,9 +176,19 @@ class MainActivity : ComponentActivity() {
             var showDetails by rememberSaveable { mutableStateOf(false) }
             // Extra operational controls are collapsed on a fresh screen.
             var showAdminOnly by rememberSaveable { mutableStateOf(false) }
-            // Show our own flashing three-dot cue BEFORE opening Android App info.
-            // Android owns its Settings menu; this app never draws over it or approves access.
-            var showThreeDotsTip by rememberSaveable { mutableStateOf(false) }
+            // A user-driven guide for Android's restricted Accessibility settings.
+            // An app may open Settings but cannot reveal the protected overflow menu
+            // or approve restricted settings on the user's behalf.
+            var restrictedHelperStep by rememberSaveable { mutableIntStateOf(0) }
+            // The setup-complete restart dialog is offered only once per guide completion.
+            var restartMenuAutoOpened by rememberSaveable { mutableStateOf(false) }
+
+            fun setupLabel(label: String, granted: Boolean = false, opened: Boolean = false): String =
+                when {
+                    granted -> "$label  \u2713 Done"
+                    opened -> "$label - Opened"
+                    else -> label
+                }
 
             suspend fun refreshCsv(): List<String>? {
                 // A central endpoint takes precedence over the legacy on-device Drive picker.
@@ -439,8 +444,8 @@ class MainActivity : ComponentActivity() {
                     startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                         data = Uri.parse("package:$packageName")
                     })
-                    status = "On App info, tap \u22ee at the top right if shown, then Allow restricted settings. Return and tap Shut Down Helper."
-                    Toast.makeText(this@MainActivity, "Look at the TOP RIGHT for \u22ee (three dots)", Toast.LENGTH_LONG).show()
+                    status = if (guided) "In App info tap the three dots, choose Allow restricted settings if offered, then return to setup."
+                        else "In App info tap the three dots, choose Allow restricted settings if shown, then return and tap Shut Down Helper. Android must approve it."
                     true
                 } catch (_: ActivityNotFoundException) {
                     openDefaultAppSettings(home = false, guided = guided)
@@ -475,23 +480,26 @@ class MainActivity : ComponentActivity() {
                     }
                 } else {
                     prefs.edit().putBoolean("phone_role_denied_v135", true).apply()
-                    // A rejected dialer role is NOT an Accessibility restricted-setting.
-                    // Open Default apps instead of incorrectly directing users to the three-dot menu.
-                    openDefaultAppSettings(home = false, guided = guidedAwaiting == "phone")
+                    // Do not repeat the blocked prompt. Show this app's details so
+                    // the user can investigate device restrictions, if any.
+                    openPhoneAppInfo(guided = guidedAwaiting == "phone")
                 }
             }
             val permissionsLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
-            ) { results ->
-                val allowed = results.isNotEmpty() && results.values.all { it }
-                status = if (allowed) "Permission allowed. Continue setup." else
-                    "Permission not allowed. Tap Help Me Set Up to try again."
-                // Update the live checklist; only proceed if this specific request was approved.
+            ) { _ ->
+                val allGranted = checkSelfPermission(Manifest.permission.CALL_PHONE) ==
+                    PackageManager.PERMISSION_GRANTED &&
+                    (Build.VERSION.SDK_INT < 33 || checkSelfPermission(
+                        Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+                status = if (allGranted) "Phone and notification permissions granted." else
+                    "Some permissions were declined. You can resume setup from the guide button."
+                // Refresh checklist even when a system permission sheet does not pause Activity.
+                guidedPulse++
                 if (guidedAwaiting == "permissions") {
                     guidedAwaiting = ""
-                    if (!allowed) guidedSetupActive = false
+                    if (!allGranted) guidedSetupActive = false
                 }
-                guidedPulse++
             }
 
             fun requestNecessaryPermissions(): Boolean {
@@ -543,9 +551,11 @@ class MainActivity : ComponentActivity() {
                         return false
                     }
                 }
-                // Phone app denial must be recovered through Android Default apps,
-                // not the separate Accessibility restricted-settings menu.
-                openDefaultAppSettings(home = false, guided = false)
+                if (prefs.getBoolean("phone_role_denied_v135", false)) {
+                    openPhoneAppInfo(guided = false)
+                } else {
+                    openDefaultAppSettings(home = false, guided = false)
+                }
                 return false
             }
 
@@ -596,21 +606,16 @@ class MainActivity : ComponentActivity() {
             // Only run one prompt at a time, and automatically advance after acceptance.
             LaunchedEffect(guidedSetupActive, guidedPulse, resumeCount) {
                 if (!guidedSetupActive || guidedAwaiting.isNotEmpty() || resumeCount == 0) return@LaunchedEffect
-                // Ask for exactly one permission at a time, in the same order as the checklist.
-                val nextPermission = when {
-                    checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED ->
-                        Manifest.permission.CALL_PHONE
-                    Build.VERSION.SDK_INT >= 33 &&
-                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED ->
-                        Manifest.permission.POST_NOTIFICATIONS
-                    else -> null
-                }
-                if (nextPermission != null) {
+                val missing = mutableListOf<String>()
+                if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED)
+                    missing.add(Manifest.permission.CALL_PHONE)
+                if (Build.VERSION.SDK_INT >= 33 &&
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                    missing.add(Manifest.permission.POST_NOTIFICATIONS)
+                if (missing.isNotEmpty()) {
                     guidedAwaiting = "permissions"
-                    status = if (nextPermission == Manifest.permission.CALL_PHONE)
-                        "Allow Phone permission to continue."
-                    else "Allow Notifications to continue."
-                    permissionsLauncher.launch(arrayOf(nextPermission))
+                    status = "Android is requesting Phone and Notifications permissions. Tap Allow to continue."
+                    permissionsLauncher.launch(missing.toTypedArray())
                     return@LaunchedEffect
                 }
                 if (Build.VERSION.SDK_INT < 29) {
@@ -618,22 +623,6 @@ class MainActivity : ComponentActivity() {
                     status = "This guided Phone role setup requires Android 10 or later."
                     return@LaunchedEffect
                 }
-                // Match the visible checklist order: Phone, Home, then the helper.
-                if (!StartupMode.isDefaultPhoneApp(this@MainActivity)) {
-                    val role = getSystemService(RoleManager::class.java)
-                    if (prefs.getBoolean("phone_role_denied_v135", false)) {
-                        openDefaultAppSettings(home = false, guided = true)
-                    } else if (!role.isRoleAvailable(RoleManager.ROLE_DIALER)) {
-                        guidedSetupActive = false
-                        status = "Android does not offer the Phone app role here. Ask your supervisor."
-                    } else {
-                        guidedAwaiting = "phone"
-                        status = "Choose Daily SIM Caller as your Phone app."
-                        roleLauncher.launch(role.createRequestRoleIntent(RoleManager.ROLE_DIALER))
-                    }
-                    return@LaunchedEffect
-                }
-                prefs.edit().remove("phone_role_denied_v135").apply()
                 if (autoOnBoot && !StartupMode.isHomeApp(this@MainActivity)) {
                     val role = getSystemService(RoleManager::class.java)
                     if (prefs.getBoolean("home_role_denied_v135", false) ||
@@ -641,29 +630,40 @@ class MainActivity : ComponentActivity() {
                         openDefaultAppSettings(home = true, guided = true)
                     } else {
                         guidedAwaiting = "home"
-                        status = "Choose Daily SIM Caller as your Home app for calls after restart."
+                        status = "Choose Daily SIM Caller as the Home app for calls after reboot and unlock."
                         homeLauncher.launch(role.createRequestRoleIntent(RoleManager.ROLE_HOME))
                     }
                     return@LaunchedEffect
                 }
                 if (autoOnBoot) prefs.edit().remove("home_role_denied_v135").apply()
                 if (ShutdownPowerHelper.isEnabled(this@MainActivity) &&
-                    !isShutdownHelperApproved()) {
+                    !ShutdownPowerHelper.isServiceConnected()) {
                     guidedAwaiting = "accessibility"
                     guidedSettingsOpenedAtResume = resumeCount
-                    status = "In Accessibility, turn on Daily SIM Caller Shut Down Helper. If blocked, return and tap Fix Permissions."
-                    try {
-                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    } catch (_: Exception) {
-                        guidedAwaiting = ""
+                    status = "Enable Daily SIM Caller shutdown helper in Accessibility. Android requires your approval."
+                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    return@LaunchedEffect
+                }
+                if (!StartupMode.isDefaultPhoneApp(this@MainActivity)) {
+                    val role = getSystemService(RoleManager::class.java)
+                    if (prefs.getBoolean("phone_role_denied_v135", false)) {
+                        openPhoneAppInfo(guided = true)
+                    } else if (!role.isRoleAvailable(RoleManager.ROLE_DIALER)) {
                         guidedSetupActive = false
-                        status = "Open Android Settings > Accessibility manually."
+                        status = "Android does not offer the default Phone role here. Calls will stay blocked."
+                    } else {
+                        guidedAwaiting = "phone"
+                        status = "Choose Daily SIM Caller as the default Phone app in Android's prompt."
+                        roleLauncher.launch(role.createRequestRoleIntent(RoleManager.ROLE_DIALER))
                     }
                     return@LaunchedEffect
                 }
+                prefs.edit().remove("phone_role_denied_v135").apply()
                 prefs.edit().putBoolean("guided_setup_complete_v136", true).apply()
                 guidedSetupActive = false
-                status = "Setup ready! Use Power Menu to restart if needed. No calls started."
+                restrictedHelperStep = 4
+                restartMenuAutoOpened = false
+                status = "Setup complete. The Android power menu will open so you can choose Restart. No calls started."
             }
 
             // Android Settings (Accessibility and Phone/Home fallback) has no simple
@@ -675,7 +675,7 @@ class MainActivity : ComponentActivity() {
                 if (awaited !in listOf("accessibility", "homeSettings", "phoneSettings", "phoneAppInfo")) return@LaunchedEffect
                 delay(750) // Let Android's Accessibility service bind after approval.
                 val granted = when (awaited) {
-                    "accessibility" -> isShutdownHelperApproved()
+                    "accessibility" -> ShutdownPowerHelper.isServiceConnected()
                     "homeSettings" -> StartupMode.isHomeApp(this@MainActivity)
                     "phoneSettings", "phoneAppInfo" -> StartupMode.isDefaultPhoneApp(this@MainActivity)
                     else -> false
@@ -685,11 +685,26 @@ class MainActivity : ComponentActivity() {
                 if (granted) guidedPulse++ else {
                     guidedSetupActive = false
                     status = when (awaited) {
-                        "accessibility" -> "Shut Down Helper is not on yet. Tap Fix Permissions near the top if Android blocked it; then try the helper again."
-                        "homeSettings" -> "Home app not selected yet. Tap Help Me Set Up to try again."
-                        "phoneSettings" -> "Phone app not selected yet. Tap Set Phone App to try again."
-                        "phoneAppInfo" -> "Phone app is not selected. Open Set Phone App to try Android Default apps."
+                        "accessibility" -> "Accessibility not connected. If Android blocks the trusted helper, use Open App Info > Allow restricted settings, then tap Guided Setup again."
+                        "homeSettings" -> "Home app not selected yet. Tap Guided Setup to reopen Home selection settings."
+                        "phoneSettings" -> "Phone app not selected yet. Tap Retry Phone role or open Default Phone apps."
+                        "phoneAppInfo" -> "Android still blocks the Phone role. If App info offered 'Allow restricted settings', approve it, then tap Retry Phone role. Otherwise the phone or its policy may prohibit this role."
                         else -> "Return to guided setup to review permission status."
+                    }
+                }
+            }
+
+            // Once all required setup checks pass, offer the Android restart menu.
+            // Only the user can choose Restart; this never performs automatic shutdown.
+            LaunchedEffect(restrictedHelperStep) {
+                if (restrictedHelperStep == 4 && !restartMenuAutoOpened) {
+                    restartMenuAutoOpened = true
+                    delay(450) // Let the completed step render before showing the system dialog.
+                    val opened = ShutdownPowerHelper.showRestartMenu()
+                    status = if (opened) {
+                        "Setup complete. Tap Restart in Android's power menu when ready."
+                    } else {
+                        "Setup complete. Tap Open Power Menu below, or hold the phone's power button to restart."
                     }
                 }
             }
@@ -755,7 +770,7 @@ class MainActivity : ComponentActivity() {
                     HorizontalDivider()
                     Text("Setup", style = MaterialTheme.typography.headlineSmall,
                         color = MaterialTheme.colorScheme.primary)
-                    Text("Tap Help Me Set Up, or follow the permission list from top to bottom. Green means Done.",
+                    Text("Tap a row to open its settings. Green means Done. Orange means check it.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     // Re-read Android roles each time the app returns from Settings.
@@ -775,64 +790,139 @@ class MainActivity : ComponentActivity() {
                         Build.VERSION.SDK_INT < 33 || checkSelfPermission(
                             Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
                     }
+                    val batteryReady = remember(resumeCount, guidedPulse) {
+                        getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+                    }
                     OutlinedButton(
                         onClick = {
-                            showThreeDotsTip = false
-                            beginGuidedSetup()
+                            if (isShutdownHelperApproved()) {
+                                restrictedHelperStep = 0
+                                beginGuidedSetup()
+                            } else {
+                                // Keep the role/permission flow idle while the user
+                                // performs the restricted-settings handoff manually.
+                                guidedSetupActive = false
+                                guidedAwaiting = ""
+                                guidedSettingsOpenedAtResume = -1
+                                restrictedHelperStep = 1
+                                status = "Follow the setup steps below. Android will ask you to approve access."
+                            }
                         },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("Help Me Set Up") }
-                    OutlinedButton(
-                        onClick = {
-                            guidedSetupActive = false
-                            guidedAwaiting = ""
-                            guidedSettingsOpenedAtResume = -1
-                            showThreeDotsTip = !showThreeDotsTip
-                            status = "If Android blocks the Shut Down Helper, use Fix Permissions and look for the three dots."
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text(if (fixPermissionsOpened) "Fix Permissions - Opened  \u22ee" else "Fix Permissions  \u22ee") }
-                    if (showThreeDotsTip) {
-                        val dotsTransition = rememberInfiniteTransition(label = "threeDotsGuide")
-                        val dotsOpacity by dotsTransition.animateFloat(
-                            initialValue = 0.35f,
-                            targetValue = 1.0f,
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(durationMillis = 650),
-                                repeatMode = RepeatMode.Reverse
-                            ),
-                            label = "threeDotsFlash"
-                        )
-                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF302C21))) {
+                    ) {
+                        Text("Help Me Set Up")
+                    }
+                    if (restrictedHelperStep != 0) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
                             Column(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Look at the TOP RIGHT", style = MaterialTheme.typography.titleMedium)
-                                    Text("\u22ee", color = Color(0xFFFFBD54).copy(alpha = dotsOpacity),
-                                        style = MaterialTheme.typography.headlineLarge)
-                                }
-                                Text("On the next Android screen, tap \u22ee (three dots) at the TOP RIGHT. Then tap Allow restricted settings if you see it.")
-                                Text("Come back here and tap Shut Down Helper. Android makes you approve access yourself.",
-                                    style = MaterialTheme.typography.bodySmall)
-                                Button(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onClick = {
-                                        fixPermissionsOpened = true
-                                        openPhoneAppInfo(guided = false)
+                                when (restrictedHelperStep) {
+                                    1 -> {
+                                        Text("Step 1 of 4: Try Shut Down Helper", style = MaterialTheme.typography.titleMedium)
+                                        Text("Tap Open Accessibility. Find Daily SIM Caller > Shut Down Helper and try to turn it on. If Android says access is restricted, tap Close, return here, and tap Next.")
+                                        OutlinedButton(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            onClick = {
+                                                try {
+                                                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                                } catch (_: ActivityNotFoundException) {
+                                                    status = "Open Settings > Accessibility manually."
+                                                } catch (_: SecurityException) {
+                                                    status = "Android blocked this shortcut. Open Settings > Accessibility manually."
+                                                }
+                                            }
+                                        ) { Text("Open Accessibility") }
+                                        Button(
+                                            onClick = {
+                                                if (isShutdownHelperApproved()) {
+                                                    restrictedHelperStep = 0
+                                                    beginGuidedSetup()
+                                                } else restrictedHelperStep = 2
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) { Text("Next") }
                                     }
-                                ) { Text("Open App Info") }
+                                    2 -> {
+                                        Text("Step 2 of 4: Fix Permissions", style = MaterialTheme.typography.titleMedium)
+                                        Text("Open App Info. Tap the three dots, then Allow restricted settings, if shown. You must approve it yourself. If there are no three dots, return to Step 1 and try the helper first.")
+                                        OutlinedButton(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            onClick = { openPhoneAppInfo(guided = false) }
+                                        ) { Text("Open App Info") }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            OutlinedButton(onClick = { restrictedHelperStep = 1 }, modifier = Modifier.weight(1f)) {
+                                                Text("Back")
+                                            }
+                                            Button(onClick = { restrictedHelperStep = 3 }, modifier = Modifier.weight(1f)) {
+                                                Text("Next")
+                                            }
+                                        }
+                                    }
+                                    3 -> {
+                                        Text("Step 3 of 4: Turn On Helper", style = MaterialTheme.typography.titleMedium)
+                                        Text("Open Accessibility again and turn on Shut Down Helper. Return here to check if Android enabled it.")
+                                        OutlinedButton(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            onClick = {
+                                                try {
+                                                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                                } catch (_: ActivityNotFoundException) {
+                                                    status = "Open Settings > Accessibility manually."
+                                                } catch (_: SecurityException) {
+                                                    status = "Android blocked this shortcut. Open Settings > Accessibility manually."
+                                                }
+                                            }
+                                        ) { Text("Open Accessibility") }
+                                        Button(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            onClick = {
+                                                if (isShutdownHelperApproved()) {
+                                                    restrictedHelperStep = 0
+                                                    beginGuidedSetup()
+                                                } else {
+                                                    status = "Shut Down Helper is not enabled yet. Use Fix Permissions if Android still blocks it."
+                                                }
+                                            }
+                                        ) { Text("Check Helper Next") }
+                                        OutlinedButton(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            onClick = { restrictedHelperStep = 2 }
+                                        ) { Text("Back") }
+                                    }
+                                    4 -> {
+                                        Text("Step 4 of 4: Restart Phone", style = MaterialTheme.typography.titleMedium)
+                                        Text("Setup is complete. The Android power menu lets you choose Restart. The app will not restart or shut down the phone for you.")
+                                        Button(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color(0xFFC62828),
+                                                contentColor = Color.White
+                                            ),
+                                            onClick = {
+                                                val opened = ShutdownPowerHelper.showRestartMenu()
+                                                status = if (opened)
+                                                    "Tap Restart in Android's power menu when ready."
+                                                else "Power menu unavailable. Hold the phone's side power button to restart."
+                                            }
+                                        ) { Text("Open Power Menu") }
+                                        OutlinedButton(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            onClick = {
+                                                restrictedHelperStep = 0
+                                                status = "Setup complete. You can restart later using Power Menu."
+                                            }
+                                        ) { Text("Finish Without Restarting") }
+                                    }
+                                }
                                 TextButton(
                                     modifier = Modifier.fillMaxWidth(),
-                                    onClick = { showThreeDotsTip = false }
-                                ) { Text("Close Tip") }
-                                Text("No three dots? Go back and try Shut Down Helper again, or ask your supervisor.",
-                                    style = MaterialTheme.typography.bodySmall)
+                                    onClick = {
+                                        restrictedHelperStep = 0
+                                        status = "You can return to setup at any time."
+                                    }
+                                ) { Text("Close Guide") }
                             }
                         }
                     }
@@ -840,7 +930,7 @@ class MainActivity : ComponentActivity() {
                     // Android, not inferred from merely visiting the settings screen.
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column {
-                            Text("Permissions", style = MaterialTheme.typography.titleMedium,
+                            Text("Make Calls", style = MaterialTheme.typography.titleMedium,
                                 modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp),
                                 color = MaterialTheme.colorScheme.primary)
                             SetupPermissionRow("Phone Permission", "Allow phone calls", phonePermissionReady) {
@@ -857,10 +947,28 @@ class MainActivity : ComponentActivity() {
                                 phoneSettingsOpened = true
                                 requestDialerRole()
                             }
+                            Text("After Restart / Shut Down", style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(start = 16.dp, top = 22.dp, bottom = 6.dp),
+                                color = MaterialTheme.colorScheme.primary)
                             SetupPermissionRow("Set Home App", "Needed for calls after a restart",
                                 homeReady, homeSettingsOpened) {
                                 homeSettingsOpened = true
                                 requestHomeRole()
+                            }
+                            SetupPermissionRow("Battery Settings", "Optional: allow background activity",
+                                batteryReady) {
+                                try {
+                                    startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                                } catch (_: Exception) {
+                                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = Uri.parse("package:$packageName")
+                                    })
+                                }
+                            }
+                            SetupPermissionRow("Fix Permissions", "Open App Info if access is restricted",
+                                null, fixPermissionsOpened) {
+                                fixPermissionsOpened = true
+                                openPhoneAppInfo(guided = false)
                             }
                             SetupPermissionRow("Shut Down Helper", "Accessibility access for power off",
                                 powerAccessReady, accessibilitySettingsOpened) {
