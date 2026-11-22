@@ -1,22 +1,19 @@
-# Daily SIM Caller - v1.3.19 retry candidate (code 23)
+# Daily SIM Caller - v1.3.20 permission checklist candidate (code 24)
 
-**Current deployed/owner-approved APK: v1.3.18.** v1.3.19 is source-only pending an Android Studio signed build and device test. No production install link has been changed.
+**Deployment status:** Source only. The previously approved signed v1.3.18 APK remains the installed/team version. HBKInstall26 is unchanged.
 
-## v1.3.19 checks
+## This change
 
-- PASS - Standalone Kotlin retry tests: repeated DNS failure then success, cancellation, malformed list refusal, HTTP error classification.
-- PASS - Static integration checks and ZIP integrity.
-- NOT VERIFIED - Android Gradle build, APK signing, real network reconnection, phone dialing after reconnection, reboot queue, auto-power off.
+- Reference: owner-provided screen recording of an AnyDesk setup checklist (November 22, 2026).
+- Changed only main-screen UI, permission result refresh and version metadata; original network retry/call/restart logic preserved.
+- Source ZIP integrity: check in authoring environment; no signed APK produced.
+- Android SDK/Gradle build and live-device tests: **not verified**. The GitHub CI workflow has failed during unavailable Android SDK 37 installation rather than app compilation.
 
-## Existing approved release
+## Test before rollout
 
-- PASS — Android Studio source based on v1.3.17 FinalSetupRestart, with v1.3.18 setup wording/button changes.
-- PASS — Static source verification and source ZIP integrity from the v1.3.18 source creation step.
-- PASS — Repository documentation synchronized to v1.3.18; employee guide added.
-- NOT INDEPENDENTLY VERIFIED — Gradle compile, APK signature, installation upgrade, on-device calls, reboot-calling and automatic power-off.
+- Open all seven setup rows and verify green checks only when Android reports permissions/roles enabled.
+- Test denied permissions, Home/Phone app roles, restricted Accessibility settings, manual power menu, battery settings, retry/cancel and authorized calls.
+- On upgrade, verify the signature matches the installed APK; never uninstall to bypass mismatch.
+- Update this file with observed device logs, APK checksum and installer test result only after on-device verification.
 
-## Release handoff
-
-- Keep the v1.3.18 signed APK and signing key secure. Do not distribute v1.3.19 until tested.
-- [Retry details](RELEASE_NOTES_v1.3.19.md)
-- [Employee guide for currently approved version](docs/EMPLOYEE_EASY_SETUP_v1.3.18.md)
+[Release notes](RELEASE_NOTES_v1.3.20.md)

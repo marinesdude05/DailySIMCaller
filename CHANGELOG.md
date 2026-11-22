@@ -1,5 +1,10 @@
 # Change log
 
+## v1.3.20 - Permission checklist (November 22, 2026)
+- Added dark, clickable permission rows with actual Android green checks/orange warnings, based on the provided settings demo.
+- Listed Phone, Notifications, Phone app, Home app, Battery Settings, Fix Permissions and Shut Down Helper.
+- Preserved the helper directly above Power Menu, guided setup and v1.3.19 retry behavior. Source only, not published.
+
 ## v1.3.19 - Source-only test candidate (November 21, 2026)
 - Retry temporary network / Google Sheets errors for an already-authorized call run, with 10/20/30/60-second waits, until a fresh list can be downloaded or the user cancels.
 - Show **Stop Trying** during a retry. Prevent duplicate restart dialing, retry cancellation problems, stale lists and Compose refresh failures.

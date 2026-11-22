@@ -13,8 +13,8 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 37
-        versionCode = 23
-        versionName = "1.3.19-auto-retry"
+        versionCode = 24
+        versionName = "1.3.20-permission-checklist"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

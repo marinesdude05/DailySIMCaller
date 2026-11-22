@@ -1,20 +1,20 @@
 # Daily SIM Caller
 
-**Newest source: v1.3.19 (version code 23), TEST CANDIDATE.** The currently approved and installed release remains **v1.3.18 (code 22)**. This repository contains Android Studio source, not a signed APK.
+**Latest Android Studio source: v1.3.20 (code 24), test candidate.** The latest owner-approved, installed APK is **v1.3.18** until this new version is built, signed and tested on a phone.
 
-- **Employees:** [Easy setup walkthrough](docs/EMPLOYEE_EASY_SETUP_v1.3.18.md)
-- **Installers and developers:** [START_HERE.md](START_HERE.md), [BUILD_STATUS.md](BUILD_STATUS.md)
-- **New retry feature:** [RELEASE_NOTES_v1.3.19.md](RELEASE_NOTES_v1.3.19.md), [CHANGELOG.md](CHANGELOG.md)
-- **Source archive in Drive:** [DailySIMCaller_v1.3.18_ClearerSetup_Source.zip](https://drive.google.com/file/d/1P9WIukorqJYajyOt2onau419sDpHRAH7/view?usp=drivesdk)
+- [New permission checklist release notes](RELEASE_NOTES_v1.3.20.md)
+- [Automatic-retry notes](RELEASE_NOTES_v1.3.19.md)
+- [Build and installation instructions](START_HERE.md)
+- [Employee guide for currently approved APK](docs/EMPLOYEE_EASY_SETUP_v1.3.18.md)
 
-## What it does
+## Current app
 
-Daily SIM Caller loads an approved CSV list of phone numbers, can start a manual call run with **Call Now**, and supports optional calls after a restart when an administrator enables them. The app also has a four-step Android permission/helper setup and an optional after-queue power-off feature.
+The app loads an approved Google Sheets CSV number list and can place authorized calls through **Call Now**. With configured roles and opt-in, it can begin a call sequence after reboot/unlock. It retries temporary network failures before calling and never uses a stale list as fresh data.
 
-For the v1.3.19 source, **Call Now** or an authorized reboot run will retry temporary Google Sheets failures while the app is visible. Use **Stop Trying** to cancel. Calls only start after a fresh valid list is downloaded.
+The main screen has a dark **Setup** checklist: Phone Permission, Notifications, Set Phone App, Set Home App, Battery Settings, Fix Permissions and Shut Down Helper. Green **✓** means Android confirmed access; orange **!** means check it. Fix Permissions is a shortcut without a verified yes/no status. The four-step guided setup remains available.
 
-## Safety and release status
+The **For Admin Only** section controls operational settings and is not password protected. Android permission changes require the phone owner's approval.
 
-The owner reports that v1.3.18 was built and tested. **v1.3.19 has not been compiled into an APK or tested on a phone here.** Do not replace the working HBKInstall26 download until a new signed APK passes on-device tests. No production signing material or live phone-number data belongs in the repository.
+## Release boundary
 
-**Note:** Android can only grant Phone, Home and Accessibility permissions after the user makes the selection on the device. **Opened** means a settings button was visited; **✓ Done** means Android confirmed the setting.
+This repository contains **source, not a signed production APK**. GitHub Actions cannot currently download the Android SDK specified by the project. Use Android Studio and the original signing identity, then test an authorized single-number call and restart before changing the live **HBKInstall26** installation link. Do not commit signing keys or real phone lists.

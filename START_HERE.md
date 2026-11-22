@@ -1,19 +1,20 @@
-# Start here - Daily SIM Caller v1.3.19 test candidate
+# Start here - Daily SIM Caller v1.3.20 source
 
-## If you are an employee
+## Employee instructions (after the owner approves a signed APK)
 
-Read [Easy Phone Setup](docs/EMPLOYEE_EASY_SETUP_v1.3.18.md). Follow the steps in order. Ask your supervisor before using **Call Now** or any **For Admin Only** switches.
+1. Open **Daily SIM Caller**. In **Setup**, look for orange exclamation points.
+2. Tap each orange row, approve the required Android setting yourself, then come back. Green checks mean **Done**.
+3. For shut down access, use **Help Me Set Up** if Android shows restricted access. Follow Steps 1-4; tap **Check Helper Next** at Step 3.
+4. **Fix Permissions** opens App Info if Android blocks the Shut Down Helper. It does not grant access itself.
+5. **Battery Settings** is optional but may help reliable restart behavior. **Set Home App** changes the normal home screen.
+6. Tap **Call Now** only when your supervisor has approved the phone list and calling. **Stop Trying** cancels a pending Google Sheets retry.
 
-## If you install or maintain the app
+## Build and release
 
-1. For employees, keep using the approved signed v1.3.18 APK. The new v1.3.19 project is **source only**, not an installable APK.
-2. This Android Studio project has application ID `com.example.dailysimcaller`, `versionCode = 23`, and `versionName = 1.3.19-auto-retry`.
-3. Open this folder as an Android Studio project. Run checks and compile before using a new APK; sign any update with the same protected signing key as the installed app.
-4. Test phone role, Home role, Accessibility helper, the four-step setup, manual calls, connected-call timer, restart behavior, and power menu on an authorized test phone.
-5. Keep an older known-good APK available until the replacement is validated on the fleet. Do not commit signing keys or private phone lists.
-6. Read [new retry release notes](RELEASE_NOTES_v1.3.19.md) and [release process](docs/RELEASE_PROCESS.md).
+1. This source uses application ID `com.example.dailysimcaller`, version code **24**, version name **1.3.20-permission-checklist**.
+2. Open this folder in Android Studio, wait for Gradle sync, and compile the app.
+3. Build a **signed release APK using the same original signing key** as the installed version. Do not upload or commit the keystore.
+4. Before distribution, check the full setup list, actual permission statuses, manual Power Menu, Call Now, retry, cancel, post-reboot calls, and stop controls on a Cloud Mobile C9 using permitted test numbers.
+5. Keep v1.3.18 available. Do not update HBKInstall26 until the **exact signed APK** has been independently tested and approved.
 
-## Source-of-truth links
-
-- [Approved v1.3.18 source ZIP in Drive](https://drive.google.com/file/d/1P9WIukorqJYajyOt2onau419sDpHRAH7/view?usp=drivesdk)
-- [Easy employee walkthrough](docs/EMPLOYEE_EASY_SETUP_v1.3.18.md)
+See [v1.3.20 release notes](RELEASE_NOTES_v1.3.20.md) and [build status](BUILD_STATUS.md).

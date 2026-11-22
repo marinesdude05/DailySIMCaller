@@ -14,6 +14,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.telecom.TelecomManager
 import androidx.activity.ComponentActivity
@@ -23,12 +24,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -491,9 +494,11 @@ class MainActivity : ComponentActivity() {
                         Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
                 status = if (allGranted) "Phone and notification permissions granted." else
                     "Some permissions were declined. You can resume setup from the guide button."
+                // Refresh checklist even when a system permission sheet does not pause Activity.
+                guidedPulse++
                 if (guidedAwaiting == "permissions") {
                     guidedAwaiting = ""
-                    if (allGranted) guidedPulse++ else guidedSetupActive = false
+                    if (!allGranted) guidedSetupActive = false
                 }
             }
 
@@ -721,7 +726,16 @@ class MainActivity : ComponentActivity() {
             val valid = hasCallSource && duration != null && duration in 1..3600 &&
                     gap != null && gap in 0..3600
 
-            MaterialTheme {
+            MaterialTheme(colorScheme = darkColorScheme(
+                primary = Color(0xFFE74B56),
+                onPrimary = Color.White,
+                background = Color(0xFF111214),
+                surface = Color(0xFF1B1C20),
+                surfaceVariant = Color(0xFF303239),
+                onSurface = Color(0xFFF5F5F5),
+                onSurfaceVariant = Color(0xFFBEBFC5)
+            )) {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 Column(
                     Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -731,7 +745,17 @@ class MainActivity : ComponentActivity() {
                     Text("Queue: ${CallQueue.status}")
                     ConnectedCallTimer()
                     Text("Completed attempts: ${CallQueue.completed}")
-                    Text(status)
+                    Text(
+                        when {
+                            status.contains("Unable to resolve host") || status.contains("number-list refresh failed", true) ->
+                                "Waiting for Google Sheets. Calls will start after a fresh list loads."
+                            status.contains("coroutine scope left", ignoreCase = true) ->
+                                "Checking connection. Open More Details if this keeps happening."
+                            else -> status
+                        },
+                        maxLines = 3,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                     OutlinedButton(
                         enabled = SpeakerphoneControl.callPresent,
                         onClick = { SpeakerphoneControl.toggle() },
@@ -744,7 +768,11 @@ class MainActivity : ComponentActivity() {
                         Text(SpeakerphoneControl.message)
                     }
                     HorizontalDivider()
-                    Text("Set Up Your Phone", style = MaterialTheme.typography.titleMedium)
+                    Text("Setup", style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.primary)
+                    Text("Tap a row to open its settings. Green means Done. Orange means check it.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                     // Re-read Android roles each time the app returns from Settings.
                     val phoneReady = remember(resumeCount, guidedPulse) {
                         StartupMode.isDefaultPhoneApp(this@MainActivity)
@@ -755,10 +783,16 @@ class MainActivity : ComponentActivity() {
                     val powerAccessReady = remember(resumeCount, guidedPulse) {
                         isShutdownHelperApproved()
                     }
-                    val usedColors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    val phonePermissionReady = remember(resumeCount, guidedPulse) {
+                        checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
+                    }
+                    val notificationsReady = remember(resumeCount, guidedPulse) {
+                        Build.VERSION.SDK_INT < 33 || checkSelfPermission(
+                            Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                    }
+                    val batteryReady = remember(resumeCount, guidedPulse) {
+                        getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+                    }
                     OutlinedButton(
                         onClick = {
                             if (isShutdownHelperApproved()) {
@@ -892,49 +926,60 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    // Fix Permissions is a shortcut, not an approval state.
-                    // Android owns the restricted-settings menu and user confirmation.
-                    OutlinedButton(
-                        onClick = {
-                            fixPermissionsOpened = true
-                            openPhoneAppInfo(guided = false)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = if (fixPermissionsOpened) usedColors else ButtonDefaults.outlinedButtonColors()
-                    ) { Text(setupLabel("Fix Permissions", opened = fixPermissionsOpened)) }
-                    OutlinedButton(
-                        onClick = {
-                            phoneSettingsOpened = true
-                            openDefaultAppSettings(home = false, guided = false)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = if (phoneReady || phoneSettingsOpened) usedColors else ButtonDefaults.outlinedButtonColors()
-                    ) {
-                        Text(setupLabel("Set Phone App", granted = phoneReady,
-                            opened = phoneSettingsOpened))
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            homeSettingsOpened = true
-                            openDefaultAppSettings(home = true, guided = false)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = if (homeReady || homeSettingsOpened) usedColors else ButtonDefaults.outlinedButtonColors()
-                    ) {
-                        Text(setupLabel("Set Home App", granted = homeReady,
-                            opened = homeSettingsOpened))
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            accessibilitySettingsOpened = true
-                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = if (powerAccessReady || accessibilitySettingsOpened) usedColors
-                            else ButtonDefaults.outlinedButtonColors()
-                    ) {
-                        Text(setupLabel("Shut Down Helper", granted = powerAccessReady,
-                            opened = accessibilitySettingsOpened))
+                    // A tap-friendly checklist like a settings app. Checked states are read from
+                    // Android, not inferred from merely visiting the settings screen.
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column {
+                            Text("Make Calls", style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp),
+                                color = MaterialTheme.colorScheme.primary)
+                            SetupPermissionRow("Phone Permission", "Allow phone calls", phonePermissionReady) {
+                                if (!phonePermissionReady) permissionsLauncher.launch(arrayOf(Manifest.permission.CALL_PHONE))
+                                else status = "Phone permission is ready"
+                            }
+                            SetupPermissionRow("Notifications", "Allow call status notifications", notificationsReady) {
+                                if (Build.VERSION.SDK_INT >= 33 && !notificationsReady)
+                                    permissionsLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+                                else status = "Notifications are ready"
+                            }
+                            SetupPermissionRow("Set Phone App", "Choose Daily SIM Caller as Phone app",
+                                phoneReady, phoneSettingsOpened) {
+                                phoneSettingsOpened = true
+                                requestDialerRole()
+                            }
+                            Text("After Restart / Shut Down", style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(start = 16.dp, top = 22.dp, bottom = 6.dp),
+                                color = MaterialTheme.colorScheme.primary)
+                            SetupPermissionRow("Set Home App", "Needed for calls after a restart",
+                                homeReady, homeSettingsOpened) {
+                                homeSettingsOpened = true
+                                requestHomeRole()
+                            }
+                            SetupPermissionRow("Battery Settings", "Optional: allow background activity",
+                                batteryReady) {
+                                try {
+                                    startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                                } catch (_: Exception) {
+                                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = Uri.parse("package:$packageName")
+                                    })
+                                }
+                            }
+                            SetupPermissionRow("Fix Permissions", "Open App Info if access is restricted",
+                                null, fixPermissionsOpened) {
+                                fixPermissionsOpened = true
+                                openPhoneAppInfo(guided = false)
+                            }
+                            SetupPermissionRow("Shut Down Helper", "Accessibility access for power off",
+                                powerAccessReady, accessibilitySettingsOpened) {
+                                accessibilitySettingsOpened = true
+                                try {
+                                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                } catch (_: Exception) {
+                                    status = "Open Android Settings > Accessibility manually."
+                                }
+                            }
+                        }
                     }
                     // This settings shortcut remains a test: opening the power menu does NOT shut down.
                     Button(
@@ -1142,7 +1187,52 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                }
             }
         }
     }
+}
+
+/** Visual setup row; a checkmark is shown only for permission/roles confirmed by Android. */
+@Composable
+private fun SetupPermissionRow(
+    title: String,
+    hint: String,
+    ready: Boolean?,
+    visited: Boolean = false,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                when {
+                    ready == true -> "Done"
+                    visited -> "$hint · Opened, not yet confirmed"
+                    else -> hint
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Text(
+            when (ready) {
+                true -> "✓"
+                false -> "!"
+                null -> "›"
+            },
+            color = when (ready) {
+                true -> Color(0xFF64D38A)
+                false -> Color(0xFFFFA34B)
+                null -> MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            style = MaterialTheme.typography.headlineMedium
+        )
+    }
+    HorizontalDivider(color = Color(0xFF35363B))
 }
