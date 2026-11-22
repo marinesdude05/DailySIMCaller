@@ -1,5 +1,10 @@
 # Change log
 
+## Unreleased - Direct Home app settings shortcut
+- Tapping **Set Home App** (and admin-only **Choose Home App**) opens Android's Home app settings directly, like Shut Down Helper opens Accessibility settings.
+- The existing Home/Phone role checks, guided setup, fallback settings screens, calling and power-off behavior are unchanged. Android must confirm the Home choice.
+- Source change only; not yet built or tested on Cloud Mobile C9 phones.
+
 ## v1.3.20 - Permission checklist (November 22, 2026)
 - Added dark, clickable permission rows with actual Android green checks/orange warnings, based on the provided settings demo.
 - Listed Phone, Notifications, Phone app, Home app, Battery Settings, Fix Permissions and Shut Down Helper.
