@@ -1,19 +1,17 @@
-# Daily SIM Caller - v1.3.20 permission checklist candidate (code 24)
+# Daily SIM Caller — v1.3.21 ordered setup (code 25)
 
-**Deployment status:** Source only. The previously approved signed v1.3.18 APK remains the installed/team version. HBKInstall26 is unchanged.
+**Status:** Android Studio source candidate only. The previously approved signed v1.3.18 APK and `HBKInstall26` distribution link are unchanged.
 
-## This change
+## Source checks
 
-- Reference: owner-provided screen recording of an AnyDesk setup checklist (November 22, 2026).
-- Changed only main-screen UI, permission result refresh and version metadata; original network retry/call/restart logic preserved.
-- Source ZIP integrity: check in authoring environment; no signed APK produced.
-- Android SDK/Gradle build and live-device tests: **not verified**. The GitHub CI workflow has failed during unavailable Android SDK 37 installation rather than app compilation.
+- Started from the exact v1.3.20 Drive ZIP plus fixes to MainActivity, Gradle version and docs.
+- Consolidated setup UI into one ordered checklist; removed Battery Settings and numbered guide.
+- Static checks verify button order, instructions, flashing in-app menu-dot cue, no Android Settings overlay, one-at-a-time permission requests, and preserved core calling/service files.
+- Archive ZIP integrity checked.
 
-## Test before rollout
+## Still required
 
-- Open all seven setup rows and verify green checks only when Android reports permissions/roles enabled.
-- Test denied permissions, Home/Phone app roles, restricted Accessibility settings, manual power menu, battery settings, retry/cancel and authorized calls.
-- On upgrade, verify the signature matches the installed APK; never uninstall to bypass mismatch.
-- Update this file with observed device logs, APK checksum and installer test result only after on-device verification.
+- A successful Android Gradle compile, signed release APK using the existing signing certificate, physical C9 setup test, Google Sheets retry/call test and reboot/shutdown checks.
+- GitHub CI has failed before compiling at Android SDK 37 installation. Static tests are **not** a compiled or phone-tested APK.
 
-[Release notes](RELEASE_NOTES_v1.3.20.md)
+See [release notes](RELEASE_NOTES_v1.3.21.md).
