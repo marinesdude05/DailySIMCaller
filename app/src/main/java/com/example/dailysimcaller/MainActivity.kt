@@ -14,7 +14,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.PowerManager
 import android.provider.Settings
 import android.telecom.TelecomManager
 import androidx.activity.ComponentActivity
@@ -790,9 +789,6 @@ class MainActivity : ComponentActivity() {
                         Build.VERSION.SDK_INT < 33 || checkSelfPermission(
                             Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
                     }
-                    val batteryReady = remember(resumeCount, guidedPulse) {
-                        getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
-                    }
                     OutlinedButton(
                         onClick = {
                             if (isShutdownHelperApproved()) {
@@ -811,6 +807,15 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Help Me Set Up")
+                    }
+                    // Put Fix Permissions immediately below Help Me Set Up.
+                    // Android itself still controls approval of restricted settings.
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        SetupPermissionRow("Fix Permissions", "Open App Info if access is restricted",
+                            null, fixPermissionsOpened) {
+                            fixPermissionsOpened = true
+                            openPhoneAppInfo(guided = false)
+                        }
                     }
                     if (restrictedHelperStep != 0) {
                         Card(modifier = Modifier.fillMaxWidth()) {
@@ -954,21 +959,6 @@ class MainActivity : ComponentActivity() {
                                 homeReady, homeSettingsOpened) {
                                 homeSettingsOpened = true
                                 requestHomeRole()
-                            }
-                            SetupPermissionRow("Battery Settings", "Optional: allow background activity",
-                                batteryReady) {
-                                try {
-                                    startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                                } catch (_: Exception) {
-                                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                        data = Uri.parse("package:$packageName")
-                                    })
-                                }
-                            }
-                            SetupPermissionRow("Fix Permissions", "Open App Info if access is restricted",
-                                null, fixPermissionsOpened) {
-                                fixPermissionsOpened = true
-                                openPhoneAppInfo(guided = false)
                             }
                             SetupPermissionRow("Shut Down Helper", "Accessibility access for power off",
                                 powerAccessReady, accessibilitySettingsOpened) {
