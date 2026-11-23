@@ -88,6 +88,19 @@
             </intent-filter>
         </service>
 
+        <!-- Enables policy management only if IT provisions this app as device owner. -->
+        <receiver
+            android:name=".DailySimDeviceAdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".ShutdownAccessibilityService"
             android:exported="true"

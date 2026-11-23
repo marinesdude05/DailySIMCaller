@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   push:
-    branches: [main, 'build/v1.3.19-updated-buttons-api36']
+    branches: [main, 'build/v1.3.19-updated-buttons-api36', 'feature/v1.3.19-managed-default-app-switches']
   pull_request:
 
 permissions:
@@ -34,6 +34,6 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: daily-sim-caller-v1.3.19-updated-buttons-debug-apk
+          name: daily-sim-caller-v1.3.19-extra-tools-order-test-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

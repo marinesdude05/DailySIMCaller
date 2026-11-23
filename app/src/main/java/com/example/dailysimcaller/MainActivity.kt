@@ -23,12 +23,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -133,6 +135,7 @@ class MainActivity : ComponentActivity() {
         // Keep the app display on while this Activity is foreground, not system-wide.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         prepareUnsecuredHomeScreen()
+        SpeakerphoneControl.initialize(this)
         // Disable any 10 AM alarm left by an older installed version.
         // This cleanup never changes the independently opted-in reboot call setting.
         DailyAlarm.clearLegacyReminder(this)
@@ -171,14 +174,23 @@ class MainActivity : ComponentActivity() {
             var homeSettingsOpened by rememberSaveable { mutableStateOf(false) }
             var accessibilitySettingsOpened by rememberSaveable { mutableStateOf(false) }
             var showDetails by rememberSaveable { mutableStateOf(false) }
+            var showSetupShortcuts by rememberSaveable { mutableStateOf(false) }
             // Extra operational controls are collapsed on a fresh screen.
             var showAdminOnly by rememberSaveable { mutableStateOf(false) }
             // A user-driven guide for Android's restricted Accessibility settings.
             // An app may open Settings but cannot reveal the protected overflow menu
             // or approve restricted settings on the user's behalf.
             var restrictedHelperStep by rememberSaveable { mutableIntStateOf(0) }
-            // The setup-complete restart dialog is offered only once per guide completion.
+            // The setup-complete restart is attempted once per explicit setup session.
             var restartMenuAutoOpened by rememberSaveable { mutableStateOf(false) }
+            var setupInteractionStarted by rememberSaveable { mutableStateOf(false) }
+            var helperAttempted by rememberSaveable { mutableStateOf(false) }
+            var setupRestartStatus by rememberSaveable { mutableStateOf("") }
+            // App info has no approval result. On return, show the real next
+            // Android screen; never pretend restricted settings were approved.
+            var appInfoPendingKey by rememberSaveable { mutableStateOf("") }
+            var appInfoOpenedAtResume by rememberSaveable { mutableIntStateOf(-1) }
+            var appInfoReturnedKey by rememberSaveable { mutableStateOf("") }
 
             fun setupLabel(label: String, granted: Boolean = false, opened: Boolean = false): String =
                 when {
@@ -452,48 +464,54 @@ class MainActivity : ComponentActivity() {
             }
 
             val homeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                guidedPulse++
                 val granted = StartupMode.isHomeApp(this@MainActivity)
                 if (granted) {
                     prefs.edit().remove("home_role_denied_v135").apply()
-                    status = "Default Home role granted. Auto-calling can run after the NEXT reboot and unlock."
+                    status = "Home app ready. Moving to the next step."
                     if (guidedAwaiting == "home") {
                         guidedAwaiting = ""
                         guidedPulse++
                     }
                 } else {
                     prefs.edit().putBoolean("home_role_denied_v135", true).apply()
-                    // Do not repeat a rejected system prompt; use Home selection settings.
-                    openDefaultAppSettings(home = true, guided = guidedAwaiting == "home")
+                    guidedAwaiting = ""
+                    guidedSetupActive = false
+                    status = "Home app is not approved yet. Tap Help Me Set Up to try the Home settings again."
                 }
             }
             val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                guidedPulse++
                 val granted = StartupMode.isDefaultPhoneApp(this@MainActivity)
                 if (granted) {
                     prefs.edit().remove("phone_role_denied_v135").apply()
-                    status = "Default Phone app role granted."
+                    status = "Phone app ready. Moving to the next step."
                     if (guidedAwaiting == "phone") {
                         guidedAwaiting = ""
                         guidedPulse++
                     }
                 } else {
                     prefs.edit().putBoolean("phone_role_denied_v135", true).apply()
-                    // Do not repeat the blocked prompt. Show this app's details so
-                    // the user can investigate device restrictions, if any.
-                    openPhoneAppInfo(guided = guidedAwaiting == "phone")
+                    guidedAwaiting = ""
+                    guidedSetupActive = false
+                    status = "Phone app is not approved yet. Tap Help Me Set Up to try again."
                 }
             }
             val permissionsLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
-            ) { _ ->
-                val allGranted = checkSelfPermission(Manifest.permission.CALL_PHONE) ==
-                    PackageManager.PERMISSION_GRANTED &&
-                    (Build.VERSION.SDK_INT < 33 || checkSelfPermission(
-                        Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
-                status = if (allGranted) "Phone and notification permissions granted." else
-                    "Some permissions were declined. You can resume setup from the guide button."
+            ) { results ->
+                // Each prompt requests one permission; approval advances to the next
+                // step even when other permissions have not yet been requested.
+                val approved = results.isNotEmpty() && results.values.all { it }
+                guidedPulse++
                 if (guidedAwaiting == "permissions") {
                     guidedAwaiting = ""
-                    if (allGranted) guidedPulse++ else guidedSetupActive = false
+                    if (approved) {
+                        status = "Permission approved. Moving to the next step."
+                    } else {
+                        guidedSetupActive = false
+                        status = "Permission not approved yet. Tap Help Me Set Up to try again."
+                    }
                 }
             }
 
@@ -532,14 +550,14 @@ class MainActivity : ComponentActivity() {
                 openDefaultAppSettings(home = true, guided = false)
             }
 
-            fun requestDialerRole(): Boolean {
+            fun requestDialerRole(userInitiatedRetry: Boolean = false): Boolean {
                 if (StartupMode.isDefaultPhoneApp(this@MainActivity)) {
                     prefs.edit().remove("phone_role_denied_v135").apply()
                     return true
                 }
                 if (Build.VERSION.SDK_INT >= 29) {
                     val manager = getSystemService(RoleManager::class.java)
-                    if (!prefs.getBoolean("phone_role_denied_v135", false) &&
+                    if ((!prefs.getBoolean("phone_role_denied_v135", false) || userInitiatedRetry) &&
                         manager.isRoleAvailable(RoleManager.ROLE_DIALER)) {
                         roleLauncher.launch(manager.createRequestRoleIntent(RoleManager.ROLE_DIALER))
                         status = "Choose Daily SIM Caller as the default Phone app"
@@ -575,11 +593,80 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            fun currentSetupSteps(): List<SetupPermissionStep> =
+                PermissionSetupSteps.build(
+                    phonePermissionGranted = checkSelfPermission(Manifest.permission.CALL_PHONE) ==
+                        PackageManager.PERMISSION_GRANTED,
+                    needsNotificationPermission = Build.VERSION.SDK_INT >= 33,
+                    notificationGranted = Build.VERSION.SDK_INT < 33 ||
+                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED,
+                    helperRequired = ShutdownPowerHelper.isEnabled(this@MainActivity),
+                    helperEnabled = isShutdownHelperApproved(),
+                    phoneRoleHeld = StartupMode.isDefaultPhoneApp(this@MainActivity),
+                    homeRequired = autoOnBoot,
+                    homeRoleHeld = StartupMode.isHomeApp(this@MainActivity)
+                )
+
             fun beginGuidedSetup() {
+                // The same Android-verified checklist drives both the main button
+                // and automatic advancement: no separate helper-first wizard.
+                restrictedHelperStep = 0
                 guidedAwaiting = ""
+                guidedSettingsOpenedAtResume = -1
+                setupInteractionStarted = currentSetupSteps().any { !it.done }
                 guidedSetupActive = true
                 guidedPulse++
-                status = "Guided setup started. Android will ask you to approve required access."
+                status = "Continue setup: follow the next Android approval screen."
+            }
+
+            fun openSetupApproval(key: SetupPermissionKey) {
+                if (currentSetupSteps().any { it.key == key && !it.done }) {
+                    setupInteractionStarted = true
+                    setupRestartStatus = ""
+                }
+                appInfoReturnedKey = ""
+                guidedSetupActive = false
+                guidedAwaiting = ""
+                guidedSettingsOpenedAtResume = -1
+                when (key) {
+                    SetupPermissionKey.PHONE_PERMISSION ->
+                        permissionsLauncher.launch(arrayOf(Manifest.permission.CALL_PHONE))
+                    SetupPermissionKey.NOTIFICATIONS ->
+                        if (Build.VERSION.SDK_INT >= 33)
+                            permissionsLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+                    SetupPermissionKey.HOME_APP -> {
+                        homeSettingsOpened = true
+                        requestHomeRole()
+                    }
+                    SetupPermissionKey.PHONE_APP -> {
+                        phoneSettingsOpened = true
+                        requestDialerRole(userInitiatedRetry = true)
+                    }
+                    SetupPermissionKey.SHUTDOWN_HELPER -> {
+                        accessibilitySettingsOpened = true
+                        helperAttempted = true
+                        try {
+                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                            status = "Turn on Shut Down Helper in Android, then return here."
+                        } catch (_: ActivityNotFoundException) {
+                            status = "Open Android Settings > Accessibility manually."
+                        } catch (_: SecurityException) {
+                            status = "Android blocked this shortcut. Open Settings > Accessibility manually."
+                        }
+                    }
+                }
+            }
+
+            LaunchedEffect(resumeCount) {
+                if (appInfoPendingKey.isNotBlank() &&
+                    appInfoOpenedAtResume >= 0 &&
+                    resumeCount > appInfoOpenedAtResume) {
+                    appInfoReturnedKey = appInfoPendingKey
+                    appInfoPendingKey = ""
+                    appInfoOpenedAtResume = -1
+                    guidedPulse++
+                    status = "Welcome back. Use Continue to open the next Android approval screen. This step is not Done until Android confirms it."
+                }
             }
 
             // First opening of v1.3.6 begins setup without searching through Settings.
@@ -598,67 +685,78 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Only run one prompt at a time, and automatically advance after acceptance.
+            // One ordered flow: Phone permission -> Notifications -> Home (if used)
+            // -> Shut Down Helper (if used) -> Phone app. Advance only on approval.
             LaunchedEffect(guidedSetupActive, guidedPulse, resumeCount) {
                 if (!guidedSetupActive || guidedAwaiting.isNotEmpty() || resumeCount == 0) return@LaunchedEffect
-                val missing = mutableListOf<String>()
-                if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED)
-                    missing.add(Manifest.permission.CALL_PHONE)
-                if (Build.VERSION.SDK_INT >= 33 &&
-                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
-                    missing.add(Manifest.permission.POST_NOTIFICATIONS)
-                if (missing.isNotEmpty()) {
-                    guidedAwaiting = "permissions"
-                    status = "Android is requesting Phone and Notifications permissions. Tap Allow to continue."
-                    permissionsLauncher.launch(missing.toTypedArray())
-                    return@LaunchedEffect
-                }
-                if (Build.VERSION.SDK_INT < 29) {
-                    guidedSetupActive = false
-                    status = "This guided Phone role setup requires Android 10 or later."
-                    return@LaunchedEffect
-                }
-                if (autoOnBoot && !StartupMode.isHomeApp(this@MainActivity)) {
-                    val role = getSystemService(RoleManager::class.java)
-                    if (prefs.getBoolean("home_role_denied_v135", false) ||
-                        !role.isRoleAvailable(RoleManager.ROLE_HOME)) {
-                        openDefaultAppSettings(home = true, guided = true)
-                    } else {
-                        guidedAwaiting = "home"
-                        status = "Choose Daily SIM Caller as the Home app for calls after reboot and unlock."
-                        homeLauncher.launch(role.createRequestRoleIntent(RoleManager.ROLE_HOME))
+                when (PermissionSetupSteps.next(currentSetupSteps())?.key) {
+                    SetupPermissionKey.PHONE_PERMISSION -> {
+                        guidedAwaiting = "permissions"
+                        status = "Allow phone calls to continue."
+                        permissionsLauncher.launch(arrayOf(Manifest.permission.CALL_PHONE))
                     }
-                    return@LaunchedEffect
-                }
-                if (autoOnBoot) prefs.edit().remove("home_role_denied_v135").apply()
-                if (ShutdownPowerHelper.isEnabled(this@MainActivity) &&
-                    !ShutdownPowerHelper.isServiceConnected()) {
-                    guidedAwaiting = "accessibility"
-                    guidedSettingsOpenedAtResume = resumeCount
-                    status = "Enable Daily SIM Caller shutdown helper in Accessibility. Android requires your approval."
-                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    return@LaunchedEffect
-                }
-                if (!StartupMode.isDefaultPhoneApp(this@MainActivity)) {
-                    val role = getSystemService(RoleManager::class.java)
-                    if (prefs.getBoolean("phone_role_denied_v135", false)) {
-                        openPhoneAppInfo(guided = true)
-                    } else if (!role.isRoleAvailable(RoleManager.ROLE_DIALER)) {
+                    SetupPermissionKey.NOTIFICATIONS -> {
+                        guidedAwaiting = "permissions"
+                        status = "Allow notifications to continue."
+                        permissionsLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+                    }
+                    SetupPermissionKey.HOME_APP -> {
+                        if (Build.VERSION.SDK_INT >= 29) {
+                            val role = getSystemService(RoleManager::class.java)
+                            if (prefs.getBoolean("home_role_denied_v135", false) ||
+                                !role.isRoleAvailable(RoleManager.ROLE_HOME)) {
+                                openDefaultAppSettings(home = true, guided = true)
+                            } else {
+                                guidedAwaiting = "home"
+                                status = "Choose Daily SIM Caller as the Home app."
+                                homeLauncher.launch(role.createRequestRoleIntent(RoleManager.ROLE_HOME))
+                            }
+                        } else {
+                            openDefaultAppSettings(home = true, guided = true)
+                        }
+                    }
+                    SetupPermissionKey.SHUTDOWN_HELPER -> {
+                        guidedAwaiting = "accessibility"
+                        guidedSettingsOpenedAtResume = resumeCount
+                        status = "In Accessibility, turn on Shut Down Helper, then return here."
+                        try {
+                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        } catch (_: ActivityNotFoundException) {
+                            guidedAwaiting = ""
+                            guidedSetupActive = false
+                            status = "Open Android Settings > Accessibility manually, then tap Help Me Set Up."
+                        } catch (_: SecurityException) {
+                            guidedAwaiting = ""
+                            guidedSetupActive = false
+                            status = "Android blocked Accessibility settings. Use Helper blocked? Fix permissions."
+                        }
+                    }
+                    SetupPermissionKey.PHONE_APP -> {
+                        if (Build.VERSION.SDK_INT >= 29) {
+                            val role = getSystemService(RoleManager::class.java)
+                            if (prefs.getBoolean("phone_role_denied_v135", false)) {
+                                openDefaultAppSettings(home = false, guided = true)
+                            } else if (!role.isRoleAvailable(RoleManager.ROLE_DIALER)) {
+                                guidedSetupActive = false
+                                status = "Android does not allow this Phone app role. Calls cannot start."
+                            } else {
+                                guidedAwaiting = "phone"
+                                status = "Choose Daily SIM Caller as the Phone app."
+                                roleLauncher.launch(role.createRequestRoleIntent(RoleManager.ROLE_DIALER))
+                            }
+                        } else {
+                            openDefaultAppSettings(home = false, guided = true)
+                        }
+                    }
+                    null -> {
+                        prefs.edit().remove("phone_role_denied_v135").apply()
+                        prefs.edit().putBoolean("guided_setup_complete_v136", true).apply()
                         guidedSetupActive = false
-                        status = "Android does not offer the default Phone role here. Calls will stay blocked."
-                    } else {
-                        guidedAwaiting = "phone"
-                        status = "Choose Daily SIM Caller as the default Phone app in Android's prompt."
-                        roleLauncher.launch(role.createRequestRoleIntent(RoleManager.ROLE_DIALER))
+                        restrictedHelperStep = 4
+                        restartMenuAutoOpened = false
+                        status = "Setup complete. Requesting a restart. No calls started."
                     }
-                    return@LaunchedEffect
                 }
-                prefs.edit().remove("phone_role_denied_v135").apply()
-                prefs.edit().putBoolean("guided_setup_complete_v136", true).apply()
-                guidedSetupActive = false
-                restrictedHelperStep = 4
-                restartMenuAutoOpened = false
-                status = "Setup complete. The Android power menu will open so you can choose Restart. No calls started."
             }
 
             // Android Settings (Accessibility and Phone/Home fallback) has no simple
@@ -668,9 +766,9 @@ class MainActivity : ComponentActivity() {
                     resumeCount <= guidedSettingsOpenedAtResume) return@LaunchedEffect
                 val awaited = guidedAwaiting
                 if (awaited !in listOf("accessibility", "homeSettings", "phoneSettings", "phoneAppInfo")) return@LaunchedEffect
-                delay(750) // Let Android's Accessibility service bind after approval.
+                delay(1000) // Allow Android to persist Accessibility approval.
                 val granted = when (awaited) {
-                    "accessibility" -> ShutdownPowerHelper.isServiceConnected()
+                    "accessibility" -> isShutdownHelperApproved()
                     "homeSettings" -> StartupMode.isHomeApp(this@MainActivity)
                     "phoneSettings", "phoneAppInfo" -> StartupMode.isDefaultPhoneApp(this@MainActivity)
                     else -> false
@@ -680,27 +778,26 @@ class MainActivity : ComponentActivity() {
                 if (granted) guidedPulse++ else {
                     guidedSetupActive = false
                     status = when (awaited) {
-                        "accessibility" -> "Accessibility not connected. If Android blocks the trusted helper, use Open App Info > Allow restricted settings, then tap Guided Setup again."
-                        "homeSettings" -> "Home app not selected yet. Tap Guided Setup to reopen Home selection settings."
-                        "phoneSettings" -> "Phone app not selected yet. Tap Retry Phone role or open Default Phone apps."
-                        "phoneAppInfo" -> "Android still blocks the Phone role. If App info offered 'Allow restricted settings', approve it, then tap Retry Phone role. Otherwise the phone or its policy may prohibit this role."
+                        "accessibility" -> "Helper not approved. Tap Helper blocked? Fix permissions if needed, then Help Me Set Up."
+                        "homeSettings" -> "Home app not approved yet. Tap Help Me Set Up to retry this step."
+                        "phoneSettings" -> "Phone app not approved yet. Tap Help Me Set Up to retry this step."
+                        "phoneAppInfo" -> "Phone app not approved yet. Tap Help Me Set Up or open extra setup tools for App info."
                         else -> "Return to guided setup to review permission status."
                     }
                 }
             }
 
-            // Once all required setup checks pass, offer the Android restart menu.
-            // Only the user can choose Restart; this never performs automatic shutdown.
+            // Once setup is complete, request reboot once. Never reboot during a call.
+            // Android device-owner policy reboots directly; the helper uses only the
+            // exact Restart control in Android's system power menu when available.
             LaunchedEffect(restrictedHelperStep) {
                 if (restrictedHelperStep == 4 && !restartMenuAutoOpened) {
                     restartMenuAutoOpened = true
-                    delay(450) // Let the completed step render before showing the system dialog.
-                    val opened = ShutdownPowerHelper.showRestartMenu()
-                    status = if (opened) {
-                        "Setup complete. Tap Restart in Android's power menu when ready."
-                    } else {
-                        "Setup complete. Tap Open Power Menu below, or hold the phone's power button to restart."
-                    }
+                    delay(450)
+                    val requested = ShutdownPowerHelper.restartAfterSetup(this@MainActivity)
+                    status = if (requested)
+                        "Restart requested. If Android did not restart, use Retry Automatic Restart or restart manually."
+                    else ShutdownPowerHelper.message
                 }
             }
 
@@ -721,31 +818,52 @@ class MainActivity : ComponentActivity() {
             val valid = hasCallSource && duration != null && duration in 1..3600 &&
                     gap != null && gap in 0..3600
 
-            MaterialTheme {
+            MaterialTheme(
+                colorScheme = lightColorScheme(
+                    primary = Color(0xFF205493),
+                    onPrimary = Color.White,
+                    primaryContainer = Color(0xFFDCEBFA),
+                    onPrimaryContainer = Color(0xFF16395F),
+                    surface = Color.White,
+                    surfaceVariant = Color(0xFFEAF0F6),
+                    onSurfaceVariant = Color(0xFF45586D),
+                    background = Color(0xFFF5F8FC),
+                    onBackground = Color(0xFF172B46)
+                )
+            ) {
                 Column(
-                    Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState())
+                        .background(MaterialTheme.colorScheme.background).padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text("Daily SIM Caller", style = MaterialTheme.typography.headlineMedium)
-                    Text("Call status", style = MaterialTheme.typography.titleLarge)
-                    Text("Queue: ${CallQueue.status}")
-                    ConnectedCallTimer()
-                    Text("Completed attempts: ${CallQueue.completed}")
-                    Text(status)
+                    Text(
+                        "Daily SIM Caller",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        "Phone testing dashboard",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    SimpleCallProgressCard(
+                        finished = CallQueue.completed,
+                        total = CallQueue.total,
+                        stage = CallQueue.stage,
+                        gettingReady = retryingCalls,
+                        appMessage = status,
+                        technicalStatus = CallQueue.status
+                    )
                     OutlinedButton(
-                        enabled = SpeakerphoneControl.callPresent,
-                        onClick = { SpeakerphoneControl.toggle() },
+                        onClick = { SpeakerphoneControl.toggle(this@MainActivity) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(if (SpeakerphoneControl.speakerOn)
-                            "Speaker ON - Turn OFF" else "Speaker OFF - Turn ON")
-                    }
-                    if (SpeakerphoneControl.callPresent && SpeakerphoneControl.message.isNotBlank()) {
-                        Text(SpeakerphoneControl.message)
+                        Text(if (SpeakerphoneControl.speakerPreferred)
+                            "Speaker is ON for every call - Turn OFF"
+                        else "Speaker is OFF for every call - Turn ON")
                     }
                     HorizontalDivider()
-                    Text("Set Up Your Phone", style = MaterialTheme.typography.titleMedium)
-                    // Re-read Android roles each time the app returns from Settings.
+                    // Android-verified permissions are checked after prompts and Settings returns.
                     val phoneReady = remember(resumeCount, guidedPulse) {
                         StartupMode.isDefaultPhoneApp(this@MainActivity)
                     }
@@ -755,204 +873,119 @@ class MainActivity : ComponentActivity() {
                     val powerAccessReady = remember(resumeCount, guidedPulse) {
                         isShutdownHelperApproved()
                     }
-                    val usedColors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    OutlinedButton(
-                        onClick = {
-                            if (isShutdownHelperApproved()) {
-                                restrictedHelperStep = 0
-                                beginGuidedSetup()
+                    val setupSteps = currentSetupSteps()
+                    val allSetupReady = PermissionSetupSteps.allApproved(setupSteps)
+                    // The older wizard reached 100% without requesting restart when
+                    // setup was finished by tapping individual rows. Watch that
+                    // one user-initiated session and request Restart exactly once.
+                    LaunchedEffect(allSetupReady, setupInteractionStarted, resumeCount) {
+                        if (allSetupReady && setupInteractionStarted &&
+                            !restartMenuAutoOpened) {
+                            setupInteractionStarted = false
+                            restartMenuAutoOpened = true
+                            delay(800)
+                            val requested = ShutdownPowerHelper.restartAfterSetup(this@MainActivity)
+                            setupRestartStatus = if (requested)
+                                "Restart requested. If the phone stays on, tap Finish setup — Restart phone again."
+                            else ShutdownPowerHelper.message
+                            status = setupRestartStatus
+                        }
+                    }
+                    val phoneRoleBlocked = !phoneReady &&
+                        prefs.getBoolean("phone_role_denied_v135", false)
+                    PermissionSetupCard(
+                        steps = setupSteps,
+                        phoneRoleBlocked = phoneRoleBlocked,
+                        helperAttemptedBlocked = helperAttempted && !powerAccessReady,
+                        restartStatus = setupRestartStatus,
+                        onRestartPhone = {
+                            val requested = ShutdownPowerHelper.restartAfterSetup(this@MainActivity)
+                            setupRestartStatus = if (requested)
+                                "Restart requested. If the phone stays on, check the power menu."
+                            else ShutdownPowerHelper.message
+                            status = setupRestartStatus
+                        },
+                        onFixPhoneRole = {
+                            // Recording: Android blocks a sideloaded Phone role until
+                            // the user opens App info and allows restricted settings.
+                            guidedSetupActive = false
+                            guidedAwaiting = ""
+                            guidedSettingsOpenedAtResume = -1
+                            if (openPhoneAppInfo(guided = false)) {
+                                appInfoPendingKey = SetupPermissionKey.PHONE_APP.name
+                                appInfoOpenedAtResume = resumeCount
+                                appInfoReturnedKey = ""
+                            }
+                            status = "In App info, open the three-dot menu and tap Allow restricted settings if offered. Come back to use Continue to Phone app."
+                        },
+                        onNext = { key -> openSetupApproval(key) },
+                        appInfoReturnFor = SetupPermissionKey.entries.firstOrNull {
+                            it.name == appInfoReturnedKey
+                        },
+                        onContinueAfterAppInfo = { key -> openSetupApproval(key) },
+                        onCheckAgain = {
+                            guidedPulse++
+                            status = "Permissions checked. Tap a step to open its settings."
+                        },
+                        onHelp = {
+                            if (allSetupReady) {
+                                status = "All setup checks are complete. Tap Finish setup — Restart phone."
                             } else {
-                                // Keep the role/permission flow idle while the user
-                                // performs the restricted-settings handoff manually.
-                                guidedSetupActive = false
-                                guidedAwaiting = ""
-                                guidedSettingsOpenedAtResume = -1
-                                restrictedHelperStep = 1
-                                status = "Follow the setup steps below. Android will ask you to approve access."
+                                beginGuidedSetup()
                             }
                         },
+                        onBlockedHelper = {
+                            // The video showed Android's "Controlled by Restricted
+                            // Setting" label. Go directly to App info rather than
+                            // restarting a separate multi-step wizard.
+                            guidedSetupActive = false
+                            guidedAwaiting = ""
+                            guidedSettingsOpenedAtResume = -1
+                            helperAttempted = true
+                            if (openPhoneAppInfo(guided = false)) {
+                                appInfoPendingKey = SetupPermissionKey.SHUTDOWN_HELPER.name
+                                appInfoOpenedAtResume = resumeCount
+                                appInfoReturnedKey = ""
+                            }
+                            status = "In App info, tap the three-dot menu > Allow restricted settings if offered. Return here to use Continue to Shut Down Helper."
+                        }
+                    )
+                    TextButton(
+                        onClick = { showSetupShortcuts = !showSetupShortcuts },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Help Me Set Up")
+                        Text(if (showSetupShortcuts) "Hide Extra Tools" else "Extra Tools")
                     }
-                    if (restrictedHelperStep != 0) {
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                when (restrictedHelperStep) {
-                                    1 -> {
-                                        Text("Step 1 of 4: Try Shut Down Helper", style = MaterialTheme.typography.titleMedium)
-                                        Text("Tap Open Accessibility. Find Daily SIM Caller > Shut Down Helper and try to turn it on. If Android says access is restricted, tap Close, return here, and tap Next.")
-                                        OutlinedButton(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            onClick = {
-                                                try {
-                                                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                                                } catch (_: ActivityNotFoundException) {
-                                                    status = "Open Settings > Accessibility manually."
-                                                } catch (_: SecurityException) {
-                                                    status = "Android blocked this shortcut. Open Settings > Accessibility manually."
-                                                }
-                                            }
-                                        ) { Text("Open Accessibility") }
-                                        Button(
-                                            onClick = {
-                                                if (isShutdownHelperApproved()) {
-                                                    restrictedHelperStep = 0
-                                                    beginGuidedSetup()
-                                                } else restrictedHelperStep = 2
-                                            },
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) { Text("Next") }
-                                    }
-                                    2 -> {
-                                        Text("Step 2 of 4: Fix Permissions", style = MaterialTheme.typography.titleMedium)
-                                        Text("Open App Info. Tap the three dots, then Allow restricted settings, if shown. You must approve it yourself. If there are no three dots, return to Step 1 and try the helper first.")
-                                        OutlinedButton(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            onClick = { openPhoneAppInfo(guided = false) }
-                                        ) { Text("Open App Info") }
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            OutlinedButton(onClick = { restrictedHelperStep = 1 }, modifier = Modifier.weight(1f)) {
-                                                Text("Back")
-                                            }
-                                            Button(onClick = { restrictedHelperStep = 3 }, modifier = Modifier.weight(1f)) {
-                                                Text("Next")
-                                            }
-                                        }
-                                    }
-                                    3 -> {
-                                        Text("Step 3 of 4: Turn On Helper", style = MaterialTheme.typography.titleMedium)
-                                        Text("Open Accessibility again and turn on Shut Down Helper. Return here to check if Android enabled it.")
-                                        OutlinedButton(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            onClick = {
-                                                try {
-                                                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                                                } catch (_: ActivityNotFoundException) {
-                                                    status = "Open Settings > Accessibility manually."
-                                                } catch (_: SecurityException) {
-                                                    status = "Android blocked this shortcut. Open Settings > Accessibility manually."
-                                                }
-                                            }
-                                        ) { Text("Open Accessibility") }
-                                        Button(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            onClick = {
-                                                if (isShutdownHelperApproved()) {
-                                                    restrictedHelperStep = 0
-                                                    beginGuidedSetup()
-                                                } else {
-                                                    status = "Shut Down Helper is not enabled yet. Use Fix Permissions if Android still blocks it."
-                                                }
-                                            }
-                                        ) { Text("Check Helper Next") }
-                                        OutlinedButton(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            onClick = { restrictedHelperStep = 2 }
-                                        ) { Text("Back") }
-                                    }
-                                    4 -> {
-                                        Text("Step 4 of 4: Restart Phone", style = MaterialTheme.typography.titleMedium)
-                                        Text("Setup is complete. The Android power menu lets you choose Restart. The app will not restart or shut down the phone for you.")
-                                        Button(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = Color(0xFFC62828),
-                                                contentColor = Color.White
-                                            ),
-                                            onClick = {
-                                                val opened = ShutdownPowerHelper.showRestartMenu()
-                                                status = if (opened)
-                                                    "Tap Restart in Android's power menu when ready."
-                                                else "Power menu unavailable. Hold the phone's side power button to restart."
-                                            }
-                                        ) { Text("Open Power Menu") }
-                                        OutlinedButton(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            onClick = {
-                                                restrictedHelperStep = 0
-                                                status = "Setup complete. You can restart later using Power Menu."
-                                            }
-                                        ) { Text("Finish Without Restarting") }
-                                    }
+                    if (showSetupShortcuts) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Button(
+                                enabled = CallQueue.running,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    // This ends the current call AND cancels remaining calls.
+                                    CallQueue.stop()
+                                    status = "Current call and queue stopped"
                                 }
-                                TextButton(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onClick = {
-                                        restrictedHelperStep = 0
-                                        status = "You can return to setup at any time."
-                                    }
-                                ) { Text("Close Guide") }
-                            }
+                            ) { Text("Stop Current Call") }
+                            Button(
+                                enabled = valid && !CallQueue.running && !retryingCalls,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    if (!requestDialerRole() || !requestNecessaryPermissions()) return@Button
+                                    persistSettings()
+                                    startCallsWithRetry(false, duration!!, gap!!)
+                                }
+                            ) { Text("Call Now") }
+                            Button(
+                                onClick = { ShutdownPowerHelper.testPowerMenu() },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFC62828),
+                                    contentColor = Color.White
+                                )
+                            ) { Text("Power Menu") }
                         }
                     }
-                    // Fix Permissions is a shortcut, not an approval state.
-                    // Android owns the restricted-settings menu and user confirmation.
-                    OutlinedButton(
-                        onClick = {
-                            fixPermissionsOpened = true
-                            openPhoneAppInfo(guided = false)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = if (fixPermissionsOpened) usedColors else ButtonDefaults.outlinedButtonColors()
-                    ) { Text(setupLabel("Fix Permissions", opened = fixPermissionsOpened)) }
-                    OutlinedButton(
-                        onClick = {
-                            phoneSettingsOpened = true
-                            openDefaultAppSettings(home = false, guided = false)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = if (phoneReady || phoneSettingsOpened) usedColors else ButtonDefaults.outlinedButtonColors()
-                    ) {
-                        Text(setupLabel("Set Phone App", granted = phoneReady,
-                            opened = phoneSettingsOpened))
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            homeSettingsOpened = true
-                            openDefaultAppSettings(home = true, guided = false)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = if (homeReady || homeSettingsOpened) usedColors else ButtonDefaults.outlinedButtonColors()
-                    ) {
-                        Text(setupLabel("Set Home App", granted = homeReady,
-                            opened = homeSettingsOpened))
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            accessibilitySettingsOpened = true
-                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = if (powerAccessReady || accessibilitySettingsOpened) usedColors
-                            else ButtonDefaults.outlinedButtonColors()
-                    ) {
-                        Text(setupLabel("Shut Down Helper", granted = powerAccessReady,
-                            opened = accessibilitySettingsOpened))
-                    }
-                    // This settings shortcut remains a test: opening the power menu does NOT shut down.
-                    Button(
-                        onClick = { ShutdownPowerHelper.testPowerMenu() },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFC62828),
-                            contentColor = Color.White
-                        )
-                    ) { Text("Power Menu") }
-                    Button(enabled = valid && !CallQueue.running && !retryingCalls,
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            if (!requestDialerRole() || !requestNecessaryPermissions()) return@Button
-                            persistSettings()
-                            startCallsWithRetry(false, duration!!, gap!!)
-                        }
-                    ) { Text("Call Now") }
                     if (retryingCalls) {
                         OutlinedButton(onClick = {
                             callRetryJob?.cancel()
@@ -972,15 +1005,58 @@ class MainActivity : ComponentActivity() {
                     }
                     if (showAdminOnly) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // Admin-only operation: this still stops a running queue immediately.
-                    Button(
-                        enabled = CallQueue.running,
-                        modifier = Modifier.fillMaxWidth(), onClick = {
-                            CallQueue.stop()
-                            status = "Calling stopped"
+                        HorizontalDivider()
+                        Text("Default Apps (managed devices)",
+                            style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (ManagedDefaultApps.isDeviceOwner(this@MainActivity))
+                                "Device-owner mode: these switches request real Android default-app changes."
+                            else
+                                "Direct changes require device-owner provisioning. This normal installation cannot switch Android defaults without confirmation."
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text("Daily SIM Caller as Home app", modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = homeReady,
+                                onCheckedChange = { desired ->
+                                    status = if (ManagedDefaultApps.isDeviceOwner(this@MainActivity)) {
+                                        ManagedDefaultApps.setHome(this@MainActivity, desired)
+                                    } else {
+                                        // No false ON/OFF state: launch the real Android chooser.
+                                        openDefaultAppSettings(home = true, guided = false)
+                                        "Select your preferred Home app in Android. The switch updates only after Android confirms the role."
+                                    }
+                                    guidedPulse++
+                                }
+                            )
                         }
-                    ) { Text("Stop Current Queue") }
-
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text("Daily SIM Caller as Phone app", modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = phoneReady,
+                                onCheckedChange = { desired ->
+                                    status = if (ManagedDefaultApps.isDeviceOwner(this@MainActivity)) {
+                                        ManagedDefaultApps.setPhone(this@MainActivity, desired)
+                                    } else if (desired) {
+                                        retryPhoneRole()
+                                        "Approve Daily SIM Caller as your Phone app in Android."
+                                    } else {
+                                        openDefaultAppSettings(home = false, guided = false)
+                                        "Choose another Phone app in Android. The switch stays ON until Android confirms the change."
+                                    }
+                                    guidedPulse++
+                                }
+                            )
+                        }
+                        Text("Switch positions reflect Android's active defaults, not saved preferences.")
                         HorizontalDivider()
                         Text("Power off after last queued call (experimental)",
                             style = MaterialTheme.typography.titleMedium)
@@ -1012,14 +1088,7 @@ class MainActivity : ComponentActivity() {
                             })
                         }
                         if (autoOnBoot) {
-                            Text("Set Home App and unlock your phone after restart. This replaces your usual Home screen.")
-                            OutlinedButton(onClick = { requestHomeRole() }, modifier = Modifier.fillMaxWidth()) {
-                                Text("Choose Home App")
-                            }
-                            OutlinedButton(onClick = { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) },
-                                modifier = Modifier.fillMaxWidth()) {
-                                Text("Restore Old Home Screen")
-                            }
+                            Text("To run after reboot, set Daily SIM Caller as Home from the main setup buttons and unlock the phone after restart.")
                         }
                         Button(onClick = {
                             callRetryJob?.cancel()

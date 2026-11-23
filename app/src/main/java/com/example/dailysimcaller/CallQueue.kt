@@ -19,7 +19,16 @@ import androidx.compose.runtime.setValue
 
 object CallQueue {
 
+    /** Operator-facing stages; keep them separate from diagnostic status messages. */
+    enum class Stage { READY, CALLING, WAITING, CONNECTED, BREAK, FINISHED, STOPPED, NEEDS_HELP }
+
     private val handler = Handler(Looper.getMainLooper())
+
+    var total by mutableIntStateOf(0)
+        private set
+
+    var stage by mutableStateOf(Stage.READY)
+        private set
 
     var running by mutableStateOf(false)
         private set
@@ -75,6 +84,7 @@ object CallQueue {
             ) != PackageManager.PERMISSION_GRANTED
         ) {
             status = "Default phone role or permission missing"
+            stage = Stage.NEEDS_HELP
             return false
         }
 
@@ -84,7 +94,9 @@ object CallQueue {
         phoneNumbers = numbers.distinct()
 
         position = 0
+        total = phoneNumbers.size
         completed = 0
+        stage = Stage.CALLING
         callSeconds = seconds
         pauseSeconds = pause
         running = true
@@ -104,6 +116,7 @@ object CallQueue {
             running = false
 
             status = "Queue complete: $completed calls attempted"
+            stage = Stage.FINISHED
 
             closeForegroundSession()
             application?.let(ShutdownPowerHelper::queueFinished)
@@ -114,6 +127,7 @@ object CallQueue {
 
         if (context == null) {
             stop(false)
+            stage = Stage.NEEDS_HELP
             return
         }
 
@@ -121,6 +135,7 @@ object CallQueue {
 
         waitingForCall = true
         startedTimer = false
+        stage = Stage.CALLING
 
         status = "Dialing ${position + 1} of " +
                 "${phoneNumbers.size}: $number"
@@ -139,6 +154,7 @@ object CallQueue {
         } catch (e: Exception) {
 
             stop(false)
+            stage = Stage.NEEDS_HELP
 
             status = "Could not place call: " +
                     (e.message ?: "Unknown error")
@@ -151,6 +167,7 @@ object CallQueue {
             if (running && waitingForCall) {
 
                 stop(false)
+                stage = Stage.NEEDS_HELP
 
                 status = "No call created by Android; queue stopped"
             }
@@ -228,6 +245,7 @@ object CallQueue {
 
         } else {
 
+            stage = Stage.WAITING
             status = "Waiting for answer: " +
                     "${position + 1} of ${phoneNumbers.size}"
 
@@ -263,6 +281,7 @@ object CallQueue {
         }
 
         startedTimer = true
+        stage = Stage.CONNECTED
 
         connectTimeout?.let {
             handler.removeCallbacks(it)
@@ -332,6 +351,7 @@ object CallQueue {
 
             status = "Queue complete: " +
                     "$completed calls attempted"
+            stage = Stage.FINISHED
 
             closeForegroundSession()
             application?.let(ShutdownPowerHelper::queueFinished)
@@ -339,6 +359,7 @@ object CallQueue {
         } else {
 
             status = "Call ended; pause $pauseSeconds seconds"
+            stage = Stage.BREAK
 
             val runnable = Runnable {
                 dialNext()
@@ -413,6 +434,7 @@ object CallQueue {
         }
 
         status = "Queue stopped"
+        stage = Stage.STOPPED
 
         closeForegroundSession()
     }

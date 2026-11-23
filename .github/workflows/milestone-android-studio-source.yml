@@ -1,0 +1,39 @@
+name: Milestone Android Studio source package
+
+on:
+  push:
+    branches: ['feature/v1.3.19-managed-default-app-switches']
+
+permissions:
+  contents: read
+
+jobs:
+  source-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Package exact frozen milestone
+        shell: bash
+        run: |
+          set -euo pipefail
+          SNAPSHOT=27025aa6bdbd79e4ccb57093487857afb3541942
+          git cat-file -e "${SNAPSHOT}^{commit}"
+          git archive --format=zip \
+            --prefix=DailySIMCaller_AndroidStudio_v39/ \
+            --output=DailySIMCaller_AndroidStudio_v39_Source.zip \
+            "$SNAPSHOT"
+          unzip -t DailySIMCaller_AndroidStudio_v39_Source.zip
+          unzip -Z1 DailySIMCaller_AndroidStudio_v39_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v39/settings.gradle.kts"
+          unzip -Z1 DailySIMCaller_AndroidStudio_v39_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v39/gradlew.bat"
+          unzip -Z1 DailySIMCaller_AndroidStudio_v39_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v39/gradle/wrapper/gradle-wrapper.jar"
+          unzip -Z1 DailySIMCaller_AndroidStudio_v39_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v39/app/src/main/java/com/example/dailysimcaller/MainActivity.kt"
+      - name: Upload Android Studio project
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-sim-caller-android-studio-milestone-v39-source
+          path: DailySIMCaller_AndroidStudio_v39_Source.zip
+          if-no-files-found: error
