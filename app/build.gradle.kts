@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 25
-        versionName = "1.3.19-admin-buttons-speaker-test"
+        versionCode = 26
+        versionName = "1.3.19-admin-auto-restart-test"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
