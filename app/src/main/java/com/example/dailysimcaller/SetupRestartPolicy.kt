@@ -6,7 +6,7 @@ package com.example.dailysimcaller
  * the Home activity after a reboot cannot cause an endless restart loop.
  */
 internal object SetupRestartPolicy {
-    const val ATTEMPTED_PREF = "setup_auto_restart_v40_attempted"
+    const val ATTEMPTED_PREF = "setup_auto_restart_v41_attempted"
 
     fun shouldRequest(
         allApproved: Boolean,
