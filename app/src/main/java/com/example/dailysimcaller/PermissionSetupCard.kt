@@ -246,9 +246,8 @@ internal fun PermissionSetupCard(
                             Text("Phone app blocked by Android?", color = warning,
                                 fontWeight = FontWeight.Bold)
                             Text(
-                                "Android may restrict default Phone app selection for sideloaded apps. " +
-                                    "Open App info, tap the three-dot menu, and select " +
-                                    "Allow restricted settings if Android offers it. " +
+                                "Open App info, tap the three-dot menu on the top right, " +
+                                    "and select Allow restricted settings. " +
                                     "Then return and tap Phone app again.",
                                 color = heading, style = MaterialTheme.typography.bodySmall
                             )
