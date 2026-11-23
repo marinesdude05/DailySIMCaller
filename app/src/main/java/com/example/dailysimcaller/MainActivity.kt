@@ -968,14 +968,6 @@ class MainActivity : ComponentActivity() {
                             )
                         ) { Text("Power Menu") }
                     }
-                    Button(enabled = valid && !CallQueue.running && !retryingCalls,
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            if (!requestDialerRole() || !requestNecessaryPermissions()) return@Button
-                            persistSettings()
-                            startCallsWithRetry(false, duration!!, gap!!)
-                        }
-                    ) { Text("Call Now") }
                     if (retryingCalls) {
                         OutlinedButton(onClick = {
                             callRetryJob?.cancel()
@@ -1003,6 +995,17 @@ class MainActivity : ComponentActivity() {
                             status = "Calling stopped"
                         }
                     ) { Text("Stop Current Queue") }
+
+                        // Manual call start remains available only inside the
+                        // collapsed admin section; no Call Now on the main screen.
+                        Button(enabled = valid && !CallQueue.running && !retryingCalls,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                if (!requestDialerRole() || !requestNecessaryPermissions()) return@Button
+                                persistSettings()
+                                startCallsWithRetry(false, duration!!, gap!!)
+                            }
+                        ) { Text("Call Now") }
 
                         HorizontalDivider()
                         Text("Default Apps (managed devices)",
