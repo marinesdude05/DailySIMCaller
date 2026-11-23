@@ -181,9 +181,7 @@ class MainActivity : ComponentActivity() {
             // An app may open Settings but cannot reveal the protected overflow menu
             // or approve restricted settings on the user's behalf.
             var restrictedHelperStep by rememberSaveable { mutableIntStateOf(0) }
-            // Persist the one-time attempt across the reboot and Activity recreation.
-            // This flag only affects setup restart, not auto-calling or queue power-off.
-            var setupInteractionStarted by rememberSaveable { mutableStateOf(false) }
+            // Restart attempt is persisted in preferences (SetupRestartPolicy).
             var helperAttempted by rememberSaveable { mutableStateOf(false) }
             var setupRestartStatus by rememberSaveable { mutableStateOf("") }
             // App info has no approval result. On return, show the real next
@@ -613,7 +611,6 @@ class MainActivity : ComponentActivity() {
                 restrictedHelperStep = 0
                 guidedAwaiting = ""
                 guidedSettingsOpenedAtResume = -1
-                setupInteractionStarted = currentSetupSteps().any { !it.done }
                 guidedSetupActive = true
                 guidedPulse++
                 status = "Continue setup: follow the next Android approval screen."
@@ -621,7 +618,6 @@ class MainActivity : ComponentActivity() {
 
             fun openSetupApproval(key: SetupPermissionKey) {
                 if (currentSetupSteps().any { it.key == key && !it.done }) {
-                    setupInteractionStarted = true
                     setupRestartStatus = ""
                 }
                 appInfoReturnedKey = ""
@@ -882,7 +878,6 @@ class MainActivity : ComponentActivity() {
                                 // Keep an unconfirmed attempt latched to prevent loops.
                                 if (prefs.edit().putBoolean(
                                         SetupRestartPolicy.ATTEMPTED_PREF, true).commit()) {
-                                    setupInteractionStarted = false
                                     val requested = ShutdownPowerHelper.restartAfterSetup(this@MainActivity)
                                     setupRestartStatus = if (requested)
                                         "Automatic restart requested. If the phone stays on, tap Finish setup — Restart phone."
