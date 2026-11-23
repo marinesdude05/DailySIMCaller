@@ -18,6 +18,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -80,6 +84,15 @@ internal object PermissionSetupSteps {
     /** The checklist and the guided launcher must agree on the next pending step. */
     fun next(steps: List<SetupPermissionStep>): SetupPermissionStep? =
         steps.firstOrNull { !it.done }
+
+    /** Move the highlighted step ahead without ever marking an Android role approved. */
+    fun nextAfter(
+        steps: List<SetupPermissionStep>, current: SetupPermissionKey
+    ): SetupPermissionStep? {
+        val currentIndex = steps.indexOfFirst { it.key == current }
+        if (currentIndex < 0) return null
+        return steps.drop(currentIndex + 1).firstOrNull { !it.done }
+    }
 }
 
 @Composable
@@ -91,7 +104,14 @@ internal fun PermissionSetupCard(
     onBlockedHelper: () -> Unit
 ) {
     val done = steps.count { it.done }
-    val next = PermissionSetupSteps.next(steps)
+    // A tap on the row's "Next" highlights the next incomplete item.
+    // The skipped item remains unfinished until Android verifies it.
+    var selectedStepName by rememberSaveable { mutableStateOf<String?>(null) }
+    val next = steps.firstOrNull { !it.done && it.key.name == selectedStepName }
+        ?: PermissionSetupSteps.next(steps)
+    val following = next?.let { PermissionSetupSteps.nextAfter(steps, it.key) }
+    val priorItemsUnfinished = if (next == null) false else
+        steps.takeWhile { it.key != next.key }.any { !it.done }
     val fraction = if (steps.isEmpty()) 1f else done.toFloat() / steps.size
 
     Card(
@@ -176,12 +196,28 @@ internal fun PermissionSetupCard(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Text(
-                            if (step.done) "Done" else if (active) "Next" else "To do",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (step.done) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        when {
+                            step.done -> Text(
+                                "Done",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            active && following != null -> TextButton(
+                                onClick = { selectedStepName = following.key.name }
+                            ) {
+                                Text("Next")
+                            }
+                            active -> Text(
+                                "Now",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            else -> Text(
+                                "To do",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -193,14 +229,30 @@ internal fun PermissionSetupCard(
                 ) {
                     Text(next.action)
                 }
+                if (priorItemsUnfinished) {
+                    Text(
+                        "You moved ahead. Earlier steps still need approval before setup is fully ready.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    TextButton(onClick = { selectedStepName = null }) {
+                        Text("Back to unfinished steps")
+                    }
+                }
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onCheckAgain) { Text("Check again") }
-                TextButton(onClick = onHelp) { Text("Help Me Set Up") }
+                TextButton(onClick = {
+                    selectedStepName = null
+                    onCheckAgain()
+                }) { Text("Check again") }
+                TextButton(onClick = {
+                    selectedStepName = null
+                    onHelp()
+                }) { Text("Help Me Set Up") }
             }
             if (next?.key == SetupPermissionKey.SHUTDOWN_HELPER) {
                 TextButton(onClick = onBlockedHelper) {
