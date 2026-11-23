@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 26
-        versionName = "1.3.19-admin-auto-restart-test"
+        versionCode = 27
+        versionName = "1.3.19-simple-progress-test"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
