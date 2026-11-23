@@ -672,12 +672,24 @@ class MainActivity : ComponentActivity() {
                     BootPreparation.schedule(this@MainActivity)
                     lastBootPrep = prefs.getString(BootPreparation.RESULT, "Not yet run").orEmpty()
                 }
-                if (!prefs.getBoolean("guided_setup_started_v136", false)) {
-                    // Installation/update is never itself a trigger to call a number.
+                // Previous installations can preserve "setup started" even when
+                // Android has reset all approvals after Android Studio reinstallation.
+                // Prompt ONCE on the first v42 launch when checks remain incomplete.
+                // Do not automatically reprompt after a denial or every resume.
+                val approved = PermissionSetupSteps.allApproved(currentSetupSteps())
+                val prompted = prefs.getBoolean(SetupFirstLaunchPolicy.V42_PROMPTED, false)
+                if (SetupFirstLaunchPolicy.shouldBegin(approved, prompted)) {
+                    // No calls start as a result of installing or opening this app.
                     StartupMode.clearPending(this@MainActivity)
-                    prefs.edit().putBoolean("guided_setup_started_v136", true)
-                        .putBoolean("guided_setup_complete_v136", false).apply()
-                    beginGuidedSetup()
+                    if (prefs.edit()
+                            .putBoolean(SetupFirstLaunchPolicy.V42_PROMPTED, true)
+                            .putBoolean("guided_setup_started_v136", true)
+                            .putBoolean("guided_setup_complete_v136", false)
+                            .commit()) {
+                        beginGuidedSetup()
+                    } else {
+                        status = "Setup needs approval. Tap Help Me Set Up to continue."
+                    }
                 }
             }
 
