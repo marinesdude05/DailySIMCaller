@@ -1,8 +1,8 @@
-name: Android Studio v40 source package
+name: Android Studio v41 source package
 
 on:
   push:
-    branches: ['feature/v1.3.19-v40-auto-restart-100-percent']
+    branches: ['feature/v1.3.19-v41-auto-restart-100-percent']
 
 permissions:
   contents: read
@@ -19,17 +19,17 @@ jobs:
         run: |
           set -euo pipefail
           git archive --format=zip \
-            --prefix=DailySIMCaller_AndroidStudio_v40/ \
-            --output=DailySIMCaller_AndroidStudio_v40_Source.zip \
+            --prefix=DailySIMCaller_AndroidStudio_v41/ \
+            --output=DailySIMCaller_AndroidStudio_v41_Source.zip \
             HEAD
-          unzip -t DailySIMCaller_AndroidStudio_v40_Source.zip
-          unzip -Z1 DailySIMCaller_AndroidStudio_v40_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v40/settings.gradle.kts"
-          unzip -Z1 DailySIMCaller_AndroidStudio_v40_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v40/gradlew.bat"
-          unzip -Z1 DailySIMCaller_AndroidStudio_v40_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v40/gradle/wrapper/gradle-wrapper.jar"
-          unzip -Z1 DailySIMCaller_AndroidStudio_v40_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v40/app/src/main/java/com/example/dailysimcaller/MainActivity.kt"
+          unzip -t DailySIMCaller_AndroidStudio_v41_Source.zip
+          unzip -Z1 DailySIMCaller_AndroidStudio_v41_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v41/settings.gradle.kts"
+          unzip -Z1 DailySIMCaller_AndroidStudio_v41_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v41/gradlew.bat"
+          unzip -Z1 DailySIMCaller_AndroidStudio_v41_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v41/gradle/wrapper/gradle-wrapper.jar"
+          unzip -Z1 DailySIMCaller_AndroidStudio_v41_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v41/app/src/main/java/com/example/dailysimcaller/MainActivity.kt"
       - name: Upload Android Studio source archive
         uses: actions/upload-artifact@v4
         with:
-          name: daily-sim-caller-android-studio-v40-source
-          path: DailySIMCaller_AndroidStudio_v40_Source.zip
+          name: daily-sim-caller-android-studio-v41-source
+          path: DailySIMCaller_AndroidStudio_v41_Source.zip
           if-no-files-found: error
