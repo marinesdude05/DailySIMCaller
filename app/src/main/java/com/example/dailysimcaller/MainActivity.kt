@@ -542,14 +542,14 @@ class MainActivity : ComponentActivity() {
                 openDefaultAppSettings(home = true, guided = false)
             }
 
-            fun requestDialerRole(): Boolean {
+            fun requestDialerRole(userInitiatedRetry: Boolean = false): Boolean {
                 if (StartupMode.isDefaultPhoneApp(this@MainActivity)) {
                     prefs.edit().remove("phone_role_denied_v135").apply()
                     return true
                 }
                 if (Build.VERSION.SDK_INT >= 29) {
                     val manager = getSystemService(RoleManager::class.java)
-                    if (!prefs.getBoolean("phone_role_denied_v135", false) &&
+                    if ((!prefs.getBoolean("phone_role_denied_v135", false) || userInitiatedRetry) &&
                         manager.isRoleAvailable(RoleManager.ROLE_DIALER)) {
                         roleLauncher.launch(manager.createRequestRoleIntent(RoleManager.ROLE_DIALER))
                         status = "Choose Daily SIM Caller as the default Phone app"
@@ -860,7 +860,9 @@ class MainActivity : ComponentActivity() {
                                 }
                                 SetupPermissionKey.PHONE_APP -> {
                                     phoneSettingsOpened = true
-                                    requestDialerRole()
+                                    // Operator explicitly tapped Phone: retry the Android
+                                    // role once even if an earlier attempt was blocked.
+                                    requestDialerRole(userInitiatedRetry = true)
                                 }
                             }
                         },
