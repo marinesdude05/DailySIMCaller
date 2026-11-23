@@ -181,8 +181,11 @@ class MainActivity : ComponentActivity() {
             // An app may open Settings but cannot reveal the protected overflow menu
             // or approve restricted settings on the user's behalf.
             var restrictedHelperStep by rememberSaveable { mutableIntStateOf(0) }
-            // The setup-complete restart is attempted at most once per completed guide.
+            // The setup-complete restart is attempted once per explicit setup session.
             var restartMenuAutoOpened by rememberSaveable { mutableStateOf(false) }
+            var setupInteractionStarted by rememberSaveable { mutableStateOf(false) }
+            var helperAttempted by rememberSaveable { mutableStateOf(false) }
+            var setupRestartStatus by rememberSaveable { mutableStateOf("") }
 
             fun setupLabel(label: String, granted: Boolean = false, opened: Boolean = false): String =
                 when {
@@ -605,6 +608,7 @@ class MainActivity : ComponentActivity() {
                 restrictedHelperStep = 0
                 guidedAwaiting = ""
                 guidedSettingsOpenedAtResume = -1
+                setupInteractionStarted = currentSetupSteps().any { !it.done }
                 guidedSetupActive = true
                 guidedPulse++
                 status = "Continue setup: follow the next Android approval screen."
@@ -815,11 +819,37 @@ class MainActivity : ComponentActivity() {
                         isShutdownHelperApproved()
                     }
                     val setupSteps = currentSetupSteps()
+                    val allSetupReady = PermissionSetupSteps.allApproved(setupSteps)
+                    // The older wizard reached 100% without requesting restart when
+                    // setup was finished by tapping individual rows. Watch that
+                    // one user-initiated session and request Restart exactly once.
+                    LaunchedEffect(allSetupReady, setupInteractionStarted, resumeCount) {
+                        if (allSetupReady && setupInteractionStarted &&
+                            !restartMenuAutoOpened) {
+                            setupInteractionStarted = false
+                            restartMenuAutoOpened = true
+                            delay(800)
+                            val requested = ShutdownPowerHelper.restartAfterSetup(this@MainActivity)
+                            setupRestartStatus = if (requested)
+                                "Restart requested. If the phone stays on, tap Finish setup — Restart phone again."
+                            else ShutdownPowerHelper.message
+                            status = setupRestartStatus
+                        }
+                    }
                     val phoneRoleBlocked = !phoneReady &&
                         prefs.getBoolean("phone_role_denied_v135", false)
                     PermissionSetupCard(
                         steps = setupSteps,
                         phoneRoleBlocked = phoneRoleBlocked,
+                        helperAttemptedBlocked = helperAttempted && !powerAccessReady,
+                        restartStatus = setupRestartStatus,
+                        onRestartPhone = {
+                            val requested = ShutdownPowerHelper.restartAfterSetup(this@MainActivity)
+                            setupRestartStatus = if (requested)
+                                "Restart requested. If the phone stays on, check the power menu."
+                            else ShutdownPowerHelper.message
+                            status = setupRestartStatus
+                        },
                         onFixPhoneRole = {
                             // Recording: Android blocks a sideloaded Phone role until
                             // the user opens App info and allows restricted settings.
@@ -830,6 +860,12 @@ class MainActivity : ComponentActivity() {
                             status = "In App info, open the three-dot menu and choose Allow restricted settings if offered. Return here and tap Phone app again."
                         },
                         onNext = { key ->
+                            // Only a deliberate setup action arms the completion restart.
+                            // Opening an already approved row must never trigger reboot.
+                            if (setupSteps.any { it.key == key && !it.done }) {
+                                setupInteractionStarted = true
+                                setupRestartStatus = ""
+                            }
                             // A row's Next button opens THAT step, not the earliest
                             // unfinished one; Android still controls every grant.
                             guidedSetupActive = false
@@ -849,6 +885,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 SetupPermissionKey.SHUTDOWN_HELPER -> {
                                     accessibilitySettingsOpened = true
+                                    helperAttempted = true
                                     try {
                                         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                                         status = "Turn on Shut Down Helper in Android, then return here."
@@ -870,14 +907,23 @@ class MainActivity : ComponentActivity() {
                             guidedPulse++
                             status = "Permissions checked. Tap a step to open its settings."
                         },
-                        onHelp = { beginGuidedSetup() },
+                        onHelp = {
+                            if (allSetupReady) {
+                                status = "All setup checks are complete. Tap Finish setup — Restart phone."
+                            } else {
+                                beginGuidedSetup()
+                            }
+                        },
                         onBlockedHelper = {
+                            // The video showed Android's "Controlled by Restricted
+                            // Setting" label. Go directly to App info rather than
+                            // restarting a separate multi-step wizard.
                             guidedSetupActive = false
                             guidedAwaiting = ""
                             guidedSettingsOpenedAtResume = -1
-                            showSetupShortcuts = true
-                            restrictedHelperStep = 1
-                            status = "If Android blocks Shut Down Helper, follow these recovery steps."
+                            helperAttempted = true
+                            openPhoneAppInfo(guided = false)
+                            status = "In App info, use the three-dot menu > Allow restricted settings if offered. Return here and tap Shut Down Helper again."
                         }
                     )
                     val usedColors = ButtonDefaults.outlinedButtonColors(
