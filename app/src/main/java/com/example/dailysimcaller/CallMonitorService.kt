@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.Context
 import android.os.Build
 import android.os.OutcomeReceiver
 import android.telecom.Call
@@ -28,6 +29,7 @@ class CallMonitorService : InCallService() {
 
     override fun onCreate() {
         super.onCreate()
+        SpeakerphoneControl.initialize(this)
         SpeakerphoneControl.attach(this)
     }
 
@@ -36,14 +38,22 @@ class CallMonitorService : InCallService() {
         PhoneCallUi.active = call
         ConnectedCallClock.onCallAdded(call)
         CallQueue.onCallAdded(call)
-        // The default is speaker ON for each new call. Manual changes only last that call.
+        // Reapply the owner's saved speaker preference on EVERY new call.
+        // Do not reset an OFF selection when the previous call ends.
         clearCallWatcher()
         monitoredCall = call
+        currentEndpoint = null
+        availableEndpoints = emptyList()
         manualOverride = false
         autoSpeakerPending = true
         routeRequestInFlight = false
         SpeakerphoneControl.updateCallPresent(true)
-        SpeakerphoneControl.updateMessage("Speakerphone will turn on when call audio is available")
+        SpeakerphoneControl.updateSpeakerOn(false) // New call audio route is not known yet.
+        SpeakerphoneControl.updateMessage(
+            if (SpeakerphoneControl.speakerPreferred)
+                "Applying saved Speaker ON setting to this call"
+            else "Applying saved Speaker OFF setting to this call"
+        )
         val watcher = object : Call.Callback() {
             override fun onStateChanged(call: Call, state: Int) {
                 ConnectedCallClock.onStateChanged(call, state)
@@ -68,7 +78,11 @@ class CallMonitorService : InCallService() {
             routeRequestInFlight = false
             SpeakerphoneControl.updateCallPresent(false)
             SpeakerphoneControl.updateSpeakerOn(false)
-            SpeakerphoneControl.updateMessage("Speakerphone turns on automatically for each new call")
+            SpeakerphoneControl.updateMessage(
+                if (SpeakerphoneControl.speakerPreferred)
+                    "Speaker ON saved for future calls"
+                else "Speaker OFF saved for future calls"
+            )
         }
         getSystemService(NotificationManager::class.java).cancel(300)
         super.onCallRemoved(call)
@@ -111,22 +125,32 @@ class CallMonitorService : InCallService() {
         if (!autoSpeakerPending || manualOverride || routeRequestInFlight) return
         val call = monitoredCall ?: return
         if (call.state !in listOf(Call.STATE_DIALING, Call.STATE_CONNECTING, Call.STATE_ACTIVE)) return
-        if (SpeakerphoneControl.speakerOn) {
+        // Wait until Telecom has reported an actual route for THIS call.
+        val currentIsSpeaker = if (Build.VERSION.SDK_INT >= 34) {
+            val endpoint = currentEndpoint ?: return
+            endpoint.endpointType == CallEndpoint.TYPE_SPEAKER
+        } else {
+            @Suppress("DEPRECATION")
+            val audioState = callAudioState ?: return
+            audioState.route == CallAudioState.ROUTE_SPEAKER
+        }
+        val desired = SpeakerphoneControl.speakerPreferred
+        if (currentIsSpeaker == desired) {
             autoSpeakerPending = false
+            SpeakerphoneControl.updateMessage(
+                if (desired) "Speaker ON (saved for all calls)" else "Speaker OFF (saved for all calls)"
+            )
             return
         }
-        changeSpeakerRoute(enable = true, automatic = true)
+        changeSpeakerRoute(enable = desired, automatic = true)
     }
 
-    /** Called only from the app's speaker toggle; never invoked by a boot receiver. */
-    fun toggleSpeaker() {
-        if (monitoredCall == null) {
-            SpeakerphoneControl.updateMessage("No active call to switch audio")
-            return
-        }
+    /** An explicit speaker selection is retained for the entire queue and future calls. */
+    fun applySpeakerPreference() {
         manualOverride = true
         autoSpeakerPending = false
-        changeSpeakerRoute(enable = !SpeakerphoneControl.speakerOn, automatic = false)
+        if (monitoredCall == null) return
+        changeSpeakerRoute(enable = SpeakerphoneControl.speakerPreferred, automatic = false)
     }
 
     @Suppress("DEPRECATION")
@@ -241,13 +265,26 @@ object PhoneCallUi {
 }
 
 object SpeakerphoneControl {
+    private const val PREFS = "speaker_settings"
+    private const val SPEAKER_PREFERRED = "speaker_preferred"
     private var service: CallMonitorService? = null
     var callPresent by mutableStateOf(false)
         private set
     var speakerOn by mutableStateOf(false)
         private set
-    var message by mutableStateOf("Speakerphone turns on automatically for each new call")
+    /** Persisted choice; not confused with Telecom's live audio route. */
+    var speakerPreferred by mutableStateOf(true)
         private set
+    var message by mutableStateOf("Speaker ON saved for all calls")
+        private set
+
+    fun initialize(context: Context) {
+        speakerPreferred = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(SPEAKER_PREFERRED, true)
+        if (!callPresent) message =
+            if (speakerPreferred) "Speaker ON saved for all calls"
+            else "Speaker OFF saved for all calls"
+    }
 
     fun attach(newService: CallMonitorService) { service = newService }
     fun detach(oldService: CallMonitorService) {
@@ -260,9 +297,14 @@ object SpeakerphoneControl {
     fun updateCallPresent(present: Boolean) { callPresent = present }
     fun updateSpeakerOn(enabled: Boolean) { speakerOn = enabled }
     fun updateMessage(text: String) { message = text }
-    fun toggle() {
-        val attached = service
-        if (attached == null) updateMessage("Phone controls unavailable; check default Phone app")
-        else attached.toggleSpeaker()
+    fun toggle(context: Context) {
+        speakerPreferred = !speakerPreferred
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(SPEAKER_PREFERRED, speakerPreferred).apply()
+        updateMessage(
+            if (speakerPreferred) "Speaker ON saved for all calls"
+            else "Speaker OFF saved for all calls"
+        )
+        service?.applySpeakerPreference()
     }
 }
