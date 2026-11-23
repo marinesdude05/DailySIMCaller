@@ -218,7 +218,7 @@ internal fun PermissionSetupCard(
                         Text("Phone app blocked by Android?", color = warning,
                             fontWeight = FontWeight.Bold)
                         Text(
-                            "The recording shows Android refusing the Phone app role. " +
+                            "Android may restrict default Phone app selection for sideloaded apps. " +
                                 "Open App info, tap the three-dot menu, and select " +
                                 "Allow restricted settings if Android offers it. " +
                                 "Then return and tap Phone app again.",
