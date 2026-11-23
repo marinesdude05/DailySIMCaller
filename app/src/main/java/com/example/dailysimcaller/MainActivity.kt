@@ -134,6 +134,7 @@ class MainActivity : ComponentActivity() {
         // Keep the app display on while this Activity is foreground, not system-wide.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         prepareUnsecuredHomeScreen()
+        SpeakerphoneControl.initialize(this)
         // Disable any 10 AM alarm left by an older installed version.
         // This cleanup never changes the independently opted-in reboot call setting.
         DailyAlarm.clearLegacyReminder(this)
@@ -734,14 +735,14 @@ class MainActivity : ComponentActivity() {
                     Text("Completed attempts: ${CallQueue.completed}")
                     Text(status)
                     OutlinedButton(
-                        enabled = SpeakerphoneControl.callPresent,
-                        onClick = { SpeakerphoneControl.toggle() },
+                        onClick = { SpeakerphoneControl.toggle(this@MainActivity) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(if (SpeakerphoneControl.speakerOn)
+                        Text(if (SpeakerphoneControl.speakerPreferred)
                             "Speaker ON - Turn OFF" else "Speaker OFF - Turn ON")
                     }
-                    if (SpeakerphoneControl.callPresent && SpeakerphoneControl.message.isNotBlank()) {
+                    Text("Speaker selection stays the same for every call until you change it.")
+                    if (SpeakerphoneControl.message.isNotBlank()) {
                         Text(SpeakerphoneControl.message)
                     }
                     HorizontalDivider()
@@ -893,27 +894,6 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    // Fix Permissions is a shortcut, not an approval state.
-                    // Android owns the restricted-settings menu and user confirmation.
-                    OutlinedButton(
-                        onClick = {
-                            fixPermissionsOpened = true
-                            openPhoneAppInfo(guided = false)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = if (fixPermissionsOpened) usedColors else ButtonDefaults.outlinedButtonColors()
-                    ) { Text(setupLabel("Fix Permissions", opened = fixPermissionsOpened)) }
-                    OutlinedButton(
-                        onClick = {
-                            phoneSettingsOpened = true
-                            openDefaultAppSettings(home = false, guided = false)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = if (phoneReady || phoneSettingsOpened) usedColors else ButtonDefaults.outlinedButtonColors()
-                    ) {
-                        Text(setupLabel("Set Phone App", granted = phoneReady,
-                            opened = phoneSettingsOpened))
-                    }
                     OutlinedButton(
                         onClick = {
                             homeSettingsOpened = true
@@ -927,6 +907,17 @@ class MainActivity : ComponentActivity() {
                     }
                     OutlinedButton(
                         onClick = {
+                            phoneSettingsOpened = true
+                            openDefaultAppSettings(home = false, guided = false)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = if (phoneReady || phoneSettingsOpened) usedColors else ButtonDefaults.outlinedButtonColors()
+                    ) {
+                        Text(setupLabel("Set Phone App", granted = phoneReady,
+                            opened = phoneSettingsOpened))
+                    }
+                    OutlinedButton(
+                        onClick = {
                             accessibilitySettingsOpened = true
                             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         },
@@ -937,6 +928,16 @@ class MainActivity : ComponentActivity() {
                         Text(setupLabel("Shut Down Helper", granted = powerAccessReady,
                             opened = accessibilitySettingsOpened))
                     }
+                    // Fix Permissions is a shortcut, not an approval state.
+                    // Android owns the restricted-settings menu and user confirmation.
+                    OutlinedButton(
+                        onClick = {
+                            fixPermissionsOpened = true
+                            openPhoneAppInfo(guided = false)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = if (fixPermissionsOpened) usedColors else ButtonDefaults.outlinedButtonColors()
+                    ) { Text(setupLabel("Fix Permissions", opened = fixPermissionsOpened)) }
                     // This settings shortcut remains a test: opening the power menu does NOT shut down.
                     Button(
                         onClick = { ShutdownPowerHelper.testPowerMenu() },
@@ -973,6 +974,15 @@ class MainActivity : ComponentActivity() {
                     }
                     if (showAdminOnly) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // Admin-only operation: this still stops a running queue immediately.
+                    Button(
+                        enabled = CallQueue.running,
+                        modifier = Modifier.fillMaxWidth(), onClick = {
+                            CallQueue.stop()
+                            status = "Calling stopped"
+                        }
+                    ) { Text("Stop Current Queue") }
+
                         HorizontalDivider()
                         Text("Default Apps (managed devices)",
                             style = MaterialTheme.typography.titleMedium)
@@ -1025,15 +1035,6 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         Text("Switch positions reflect Android's active defaults, not saved preferences.")
-                        // Admin-only operation: this still stops a running queue immediately.
-                    Button(
-                        enabled = CallQueue.running,
-                        modifier = Modifier.fillMaxWidth(), onClick = {
-                            CallQueue.stop()
-                            status = "Calling stopped"
-                        }
-                    ) { Text("Stop Current Queue") }
-
                         HorizontalDivider()
                         Text("Power off after last queued call (experimental)",
                             style = MaterialTheme.typography.titleMedium)
