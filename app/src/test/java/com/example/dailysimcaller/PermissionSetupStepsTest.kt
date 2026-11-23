@@ -159,4 +159,34 @@ class PermissionSetupStepsTest {
         assertEquals(null, PermissionSetupSteps.nextAfter(steps, SetupPermissionKey.SHUTDOWN_HELPER))
     }
 
+    @Test fun restartOnlyEligibleWhenAllAndroidStepsApproved() {
+        val steps = PermissionSetupSteps.build(
+            phonePermissionGranted = true,
+            needsNotificationPermission = true,
+            notificationGranted = true,
+            helperRequired = true,
+            helperEnabled = true,
+            phoneRoleHeld = true,
+            homeRequired = true,
+            homeRoleHeld = true
+        )
+        assertTrue(PermissionSetupSteps.allApproved(steps))
+        assertEquals(5, steps.count { it.done })
+    }
+
+    @Test fun incompleteHelperCannotTriggerSetupCompletion() {
+        val steps = PermissionSetupSteps.build(
+            phonePermissionGranted = true,
+            needsNotificationPermission = true,
+            notificationGranted = true,
+            helperRequired = true,
+            helperEnabled = false,
+            phoneRoleHeld = true,
+            homeRequired = true,
+            homeRoleHeld = true
+        )
+        assertFalse(PermissionSetupSteps.allApproved(steps))
+        assertEquals(SetupPermissionKey.SHUTDOWN_HELPER, PermissionSetupSteps.next(steps)?.key)
+    }
+
 }
