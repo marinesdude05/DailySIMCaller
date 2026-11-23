@@ -26,6 +26,7 @@ class CallMonitorService : InCallService() {
     private var autoSpeakerPending = false
     private var manualOverride = false
     private var routeRequestInFlight = false
+    private var pendingManualRouteChange = false
 
     override fun onCreate() {
         super.onCreate()
@@ -47,6 +48,7 @@ class CallMonitorService : InCallService() {
         manualOverride = false
         autoSpeakerPending = true
         routeRequestInFlight = false
+        pendingManualRouteChange = false
         SpeakerphoneControl.updateCallPresent(true)
         SpeakerphoneControl.updateSpeakerOn(false) // New call audio route is not known yet.
         SpeakerphoneControl.updateMessage(
@@ -76,6 +78,7 @@ class CallMonitorService : InCallService() {
             autoSpeakerPending = false
             manualOverride = false
             routeRequestInFlight = false
+            pendingManualRouteChange = false
             SpeakerphoneControl.updateCallPresent(false)
             SpeakerphoneControl.updateSpeakerOn(false)
             SpeakerphoneControl.updateMessage(
@@ -108,6 +111,7 @@ class CallMonitorService : InCallService() {
         super.onAvailableCallEndpointsChanged(availableEndpoints)
         if (Build.VERSION.SDK_INT >= 34) {
             this.availableEndpoints = availableEndpoints.toList()
+            if (pendingManualRouteChange && !routeRequestInFlight) applyPendingManualRouteChange()
             tryAutoSpeaker()
         }
     }
@@ -117,6 +121,7 @@ class CallMonitorService : InCallService() {
         if (Build.VERSION.SDK_INT >= 34) {
             currentEndpoint = callEndpoint
             SpeakerphoneControl.updateSpeakerOn(callEndpoint.endpointType == CallEndpoint.TYPE_SPEAKER)
+            if (pendingManualRouteChange && !routeRequestInFlight) applyPendingManualRouteChange()
             tryAutoSpeaker()
         }
     }
@@ -150,6 +155,19 @@ class CallMonitorService : InCallService() {
         manualOverride = true
         autoSpeakerPending = false
         if (monitoredCall == null) return
+        if (routeRequestInFlight) {
+            // Do not lose an OFF tap made while the prior ON request is in flight.
+            pendingManualRouteChange = true
+            return
+        }
+        changeSpeakerRoute(enable = SpeakerphoneControl.speakerPreferred, automatic = false)
+    }
+
+    private fun applyPendingManualRouteChange() {
+        if (!pendingManualRouteChange || routeRequestInFlight || monitoredCall == null) return
+        pendingManualRouteChange = false
+        // Endpoint callbacks can lag a successful request: disregard stale route.
+        currentEndpoint = null
         changeSpeakerRoute(enable = SpeakerphoneControl.speakerPreferred, automatic = false)
     }
 
@@ -185,17 +203,20 @@ class CallMonitorService : InCallService() {
                             if (automatic) autoSpeakerPending = false
                             // Actual state is updated by onCallEndpointChanged, not guessed here.
                             SpeakerphoneControl.updateMessage(if (enable) "Speaker requested" else "Earpiece requested")
+                            applyPendingManualRouteChange()
                         }
                         override fun onError(error: CallEndpointException) {
                             routeRequestInFlight = false
                             if (automatic) autoSpeakerPending = false
                             SpeakerphoneControl.updateMessage("Audio route change denied: ${error.message ?: "unknown error"}")
+                            applyPendingManualRouteChange()
                         }
                     })
             } catch (error: Exception) {
                 routeRequestInFlight = false
                 if (automatic) autoSpeakerPending = false
                 SpeakerphoneControl.updateMessage("Audio route unavailable: ${error.message ?: "unknown error"}")
+                applyPendingManualRouteChange()
             }
         } else {
             val state = callAudioState ?: return // Telecom has not initialized call audio.
