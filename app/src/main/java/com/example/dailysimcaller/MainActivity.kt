@@ -851,7 +851,8 @@ class MainActivity : ComponentActivity() {
                     val homeReady = remember(resumeCount, guidedPulse) {
                         StartupMode.isHomeApp(this@MainActivity)
                     }
-                    val powerAccessReady = remember(resumeCount, guidedPulse) {
+                    val helperConnectionVersion = ShutdownPowerHelper.connectionVersion
+                    val powerAccessReady = remember(resumeCount, guidedPulse, helperConnectionVersion) {
                         isShutdownHelperApproved()
                     }
                     val setupSteps = currentSetupSteps()
@@ -860,12 +861,19 @@ class MainActivity : ComponentActivity() {
                     // restart even if the final permission was enabled in Settings.
                     // Persist the attempt BEFORE opening Android's power menu; that
                     // way returning from System UI or rebooting cannot cause a loop.
-                    LaunchedEffect(allSetupReady, resumeCount) {
+                    LaunchedEffect(allSetupReady, resumeCount, helperConnectionVersion) {
                         if (allSetupReady && isVisible) {
                             // Give Android's Accessibility service a moment to bind
                             // after the last permission screen closes.
                             delay(900)
-                            if (SetupRestartPolicy.shouldRequest(
+                            // Accessibility approval alone does not mean its service
+                            // has connected. Wait instead of consuming the one-time
+                            // restart attempt before the helper is actually available.
+                            val restartTransportReady = ManagedDefaultApps.isDeviceOwner(this@MainActivity) ||
+                                ShutdownPowerHelper.isServiceConnected()
+                            if (!restartTransportReady) {
+                                setupRestartStatus = "Setup is 100% ready. Waiting for Shut Down Helper to connect; if it stays disconnected, open Accessibility settings."
+                            } else if (SetupRestartPolicy.shouldRequest(
                                     allApproved = PermissionSetupSteps.allApproved(currentSetupSteps()),
                                     foreground = isVisible,
                                     alreadyAttempted = prefs.getBoolean(
@@ -975,13 +983,40 @@ class MainActivity : ComponentActivity() {
                                 }
                             ) { Text("Call Now") }
                             Button(
-                                onClick = { ShutdownPowerHelper.testPowerMenu() },
+                                onClick = {
+                                    val opened = ShutdownPowerHelper.testPowerMenu()
+                                    status = ShutdownPowerHelper.message
+                                    if (!opened) setupRestartStatus = ShutdownPowerHelper.message
+                                },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color(0xFFC62828),
                                     contentColor = Color.White
                                 )
                             ) { Text("Power Menu") }
+                            val helperConnected = ShutdownPowerHelper.isServiceConnected()
+                            val helperStatus = if (helperConnected)
+                                "Shut Down Helper: Connected"
+                            else ShutdownPowerHelper.connectionStatus(this@MainActivity)
+                            Text(helperStatus, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (ShutdownPowerHelper.message.isNotBlank()) {
+                                Text(ShutdownPowerHelper.message,
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (!helperConnected) {
+                                OutlinedButton(
+                                    onClick = {
+                                        try {
+                                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                            status = "In Accessibility, enable Daily SIM Caller shutdown helper, then return here."
+                                        } catch (_: Exception) {
+                                            status = "Android blocked the Accessibility shortcut. Open Settings > Accessibility manually."
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Open Accessibility Settings") }
+                            }
                         }
                     }
                     if (retryingCalls) {
