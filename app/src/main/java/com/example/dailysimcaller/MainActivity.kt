@@ -456,6 +456,7 @@ class MainActivity : ComponentActivity() {
             }
 
             val homeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                guidedPulse++
                 val granted = StartupMode.isHomeApp(this@MainActivity)
                 if (granted) {
                     prefs.edit().remove("home_role_denied_v135").apply()
@@ -472,6 +473,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                guidedPulse++
                 val granted = StartupMode.isDefaultPhoneApp(this@MainActivity)
                 if (granted) {
                     prefs.edit().remove("phone_role_denied_v135").apply()
@@ -813,8 +815,20 @@ class MainActivity : ComponentActivity() {
                         isShutdownHelperApproved()
                     }
                     val setupSteps = currentSetupSteps()
+                    val phoneRoleBlocked = !phoneReady &&
+                        prefs.getBoolean("phone_role_denied_v135", false)
                     PermissionSetupCard(
                         steps = setupSteps,
+                        phoneRoleBlocked = phoneRoleBlocked,
+                        onFixPhoneRole = {
+                            // Recording: Android blocks a sideloaded Phone role until
+                            // the user opens App info and allows restricted settings.
+                            guidedSetupActive = false
+                            guidedAwaiting = ""
+                            guidedSettingsOpenedAtResume = -1
+                            openPhoneAppInfo(guided = false)
+                            status = "In App info, open the three-dot menu and choose Allow restricted settings if offered. Return here and tap Phone app again."
+                        },
                         onNext = { key ->
                             // A row's Next button opens THAT step, not the earliest
                             // unfinished one; Android still controls every grant.
@@ -850,7 +864,10 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         },
-                        onCheckAgain = { guidedPulse++ },
+                        onCheckAgain = {
+                            guidedPulse++
+                            status = "Permissions checked. Tap a step to open its settings."
+                        },
                         onHelp = { beginGuidedSetup() },
                         onBlockedHelper = {
                             guidedSetupActive = false
