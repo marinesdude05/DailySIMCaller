@@ -110,4 +110,53 @@ class PermissionSetupStepsTest {
         assertEquals(SetupPermissionKey.NOTIFICATIONS, PermissionSetupSteps.next(steps)?.key)
     }
 
+    @Test fun nextButtonOnHelperSelectsPhoneWithoutGrantingHelper() {
+        val steps = PermissionSetupSteps.build(
+            phonePermissionGranted = true,
+            needsNotificationPermission = true,
+            notificationGranted = true,
+            helperRequired = true,
+            helperEnabled = false,
+            phoneRoleHeld = false,
+            homeRequired = true,
+            homeRoleHeld = true
+        )
+        val following = PermissionSetupSteps.nextAfter(
+            steps, SetupPermissionKey.SHUTDOWN_HELPER
+        )
+        assertEquals(SetupPermissionKey.PHONE_APP, following?.key)
+        assertFalse(steps.first { it.key == SetupPermissionKey.SHUTDOWN_HELPER }.done)
+    }
+
+    @Test fun nextButtonFromHomeGoesToHelperBeforePhone() {
+        val steps = PermissionSetupSteps.build(
+            phonePermissionGranted = true,
+            needsNotificationPermission = true,
+            notificationGranted = true,
+            helperRequired = true,
+            helperEnabled = false,
+            phoneRoleHeld = false,
+            homeRequired = true,
+            homeRoleHeld = false
+        )
+        assertEquals(
+            SetupPermissionKey.SHUTDOWN_HELPER,
+            PermissionSetupSteps.nextAfter(steps, SetupPermissionKey.HOME_APP)?.key
+        )
+    }
+
+    @Test fun noNextButtonWhenFollowingItemsAreAlreadyApproved() {
+        val steps = PermissionSetupSteps.build(
+            phonePermissionGranted = true,
+            needsNotificationPermission = true,
+            notificationGranted = true,
+            helperRequired = true,
+            helperEnabled = false,
+            phoneRoleHeld = true,
+            homeRequired = true,
+            homeRoleHeld = true
+        )
+        assertEquals(null, PermissionSetupSteps.nextAfter(steps, SetupPermissionKey.SHUTDOWN_HELPER))
+    }
+
 }
