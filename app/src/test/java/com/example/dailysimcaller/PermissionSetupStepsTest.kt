@@ -62,4 +62,52 @@ class PermissionSetupStepsTest {
         assertEquals(3, steps.count { it.done })
         assertEquals(SetupPermissionKey.HOME_APP, steps.first { !it.done }.key)
     }
+    @Test fun afterNotificationsGuidedSetupGoesToHomeNotHelper() {
+        val steps = PermissionSetupSteps.build(
+            phonePermissionGranted = true,
+            needsNotificationPermission = true,
+            notificationGranted = true,
+            helperRequired = true,
+            helperEnabled = false,
+            phoneRoleHeld = false,
+            homeRequired = true,
+            homeRoleHeld = false
+        )
+        assertEquals(SetupPermissionKey.HOME_APP, PermissionSetupSteps.next(steps)?.key)
+    }
+
+    @Test fun afterHomeApprovalGoesToHelperThenPhone() {
+        val helperNext = PermissionSetupSteps.build(
+            phonePermissionGranted = true,
+            needsNotificationPermission = true,
+            notificationGranted = true,
+            helperRequired = true,
+            helperEnabled = false,
+            phoneRoleHeld = false,
+            homeRequired = true,
+            homeRoleHeld = true
+        )
+        assertEquals(SetupPermissionKey.SHUTDOWN_HELPER, PermissionSetupSteps.next(helperNext)?.key)
+
+        val phoneNext = helperNext.map {
+            if (it.key == SetupPermissionKey.SHUTDOWN_HELPER) it.copy(done = true) else it
+        }
+        assertEquals(SetupPermissionKey.PHONE_APP, PermissionSetupSteps.next(phoneNext)?.key)
+        assertEquals(null, PermissionSetupSteps.next(phoneNext.map { it.copy(done = true) }))
+    }
+
+    @Test fun denialLeavesSameStepPendingWithoutSkippingAhead() {
+        val steps = PermissionSetupSteps.build(
+            phonePermissionGranted = true,
+            needsNotificationPermission = true,
+            notificationGranted = false,
+            helperRequired = true,
+            helperEnabled = false,
+            phoneRoleHeld = false,
+            homeRequired = true,
+            homeRoleHeld = false
+        )
+        assertEquals(SetupPermissionKey.NOTIFICATIONS, PermissionSetupSteps.next(steps)?.key)
+    }
+
 }
