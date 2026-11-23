@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 32
-        versionName = "1.3.19-video-guided-setup-test"
+        versionCode = 33
+        versionName = "1.3.19-recording-issues-fix-test"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
