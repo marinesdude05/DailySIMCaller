@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 34
-        versionName = "1.3.19-helper-card-order-test"
+        versionCode = 35
+        versionName = "1.3.19-phone-first-setup-test"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
