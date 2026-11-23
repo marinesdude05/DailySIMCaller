@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 27
-        versionName = "1.3.19-simple-progress-test"
+        versionCode = 28
+        versionName = "1.3.19-simple-permissions-test"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
