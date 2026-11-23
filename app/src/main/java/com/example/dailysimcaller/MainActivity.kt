@@ -954,19 +954,37 @@ class MainActivity : ComponentActivity() {
                         onClick = { showSetupShortcuts = !showSetupShortcuts },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(if (showSetupShortcuts) "Hide extra setup tools" else "More setup tools")
+                        Text(if (showSetupShortcuts) "Hide Extra Tools" else "Extra Tools")
                     }
                     if (showSetupShortcuts) {
-                        // Keep only this utility. Phone, Home, helper approval and
-                        // restricted-settings help are already in the checklist.
-                        Button(
-                            onClick = { ShutdownPowerHelper.testPowerMenu() },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFC62828),
-                                contentColor = Color.White
-                            )
-                        ) { Text("Power Menu") }
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Button(
+                                enabled = CallQueue.running,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    // This ends the current call AND cancels remaining calls.
+                                    CallQueue.stop()
+                                    status = "Current call and queue stopped"
+                                }
+                            ) { Text("Stop Current Call") }
+                            Button(
+                                enabled = valid && !CallQueue.running && !retryingCalls,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    if (!requestDialerRole() || !requestNecessaryPermissions()) return@Button
+                                    persistSettings()
+                                    startCallsWithRetry(false, duration!!, gap!!)
+                                }
+                            ) { Text("Call Now") }
+                            Button(
+                                onClick = { ShutdownPowerHelper.testPowerMenu() },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFC62828),
+                                    contentColor = Color.White
+                                )
+                            ) { Text("Power Menu") }
+                        }
                     }
                     if (retryingCalls) {
                         OutlinedButton(onClick = {
@@ -987,26 +1005,6 @@ class MainActivity : ComponentActivity() {
                     }
                     if (showAdminOnly) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // Admin-only operation: this still stops a running queue immediately.
-                    Button(
-                        enabled = CallQueue.running,
-                        modifier = Modifier.fillMaxWidth(), onClick = {
-                            CallQueue.stop()
-                            status = "Calling stopped"
-                        }
-                    ) { Text("Stop Current Queue") }
-
-                        // Manual call start remains available only inside the
-                        // collapsed admin section; no Call Now on the main screen.
-                        Button(enabled = valid && !CallQueue.running && !retryingCalls,
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                if (!requestDialerRole() || !requestNecessaryPermissions()) return@Button
-                                persistSettings()
-                                startCallsWithRetry(false, duration!!, gap!!)
-                            }
-                        ) { Text("Call Now") }
-
                         HorizontalDivider()
                         Text("Default Apps (managed devices)",
                             style = MaterialTheme.typography.titleMedium)
