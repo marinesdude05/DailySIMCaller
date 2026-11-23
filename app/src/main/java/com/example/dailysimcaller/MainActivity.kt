@@ -490,17 +490,19 @@ class MainActivity : ComponentActivity() {
             val permissionsLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
             ) { _ ->
-                // Recompute verified checklist state after a runtime permission prompt.
+                // A single granted permission must advance even if a later one is missing.
+                // Read Android's actual grants; a denial pauses without retrying in a loop.
+                val pendingPermission = PermissionSetupSteps.next(currentSetupSteps())?.key
                 guidedPulse++
-                val allGranted = checkSelfPermission(Manifest.permission.CALL_PHONE) ==
-                    PackageManager.PERMISSION_GRANTED &&
-                    (Build.VERSION.SDK_INT < 33 || checkSelfPermission(
-                        Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
-                status = if (allGranted) "Phone and notification permissions granted." else
-                    "Some permissions were declined. You can resume setup from the guide button."
                 if (guidedAwaiting == "permissions") {
                     guidedAwaiting = ""
-                    if (allGranted) guidedPulse++ else guidedSetupActive = false
+                    if (pendingPermission == SetupPermissionKey.PHONE_PERMISSION ||
+                        pendingPermission == SetupPermissionKey.NOTIFICATIONS) {
+                        guidedSetupActive = false
+                        status = "Permission not approved yet. Tap Help Me Set Up to try again."
+                    } else {
+                        status = "Permission approved. Moving to the next step."
+                    }
                 }
             }
 
@@ -704,9 +706,9 @@ class MainActivity : ComponentActivity() {
                     resumeCount <= guidedSettingsOpenedAtResume) return@LaunchedEffect
                 val awaited = guidedAwaiting
                 if (awaited !in listOf("accessibility", "homeSettings", "phoneSettings", "phoneAppInfo")) return@LaunchedEffect
-                delay(750) // Let Android's Accessibility service bind after approval.
+                delay(1000) // Allow Android to persist Accessibility approval.
                 val granted = when (awaited) {
-                    "accessibility" -> ShutdownPowerHelper.isServiceConnected()
+                    "accessibility" -> isShutdownHelperApproved()
                     "homeSettings" -> StartupMode.isHomeApp(this@MainActivity)
                     "phoneSettings", "phoneAppInfo" -> StartupMode.isDefaultPhoneApp(this@MainActivity)
                     else -> false
@@ -716,10 +718,10 @@ class MainActivity : ComponentActivity() {
                 if (granted) guidedPulse++ else {
                     guidedSetupActive = false
                     status = when (awaited) {
-                        "accessibility" -> "Accessibility not connected. If Android blocks the trusted helper, use Open App Info > Allow restricted settings, then tap Guided Setup again."
-                        "homeSettings" -> "Home app not selected yet. Tap Guided Setup to reopen Home selection settings."
-                        "phoneSettings" -> "Phone app not selected yet. Tap Retry Phone role or open Default Phone apps."
-                        "phoneAppInfo" -> "Android still blocks the Phone role. If App info offered 'Allow restricted settings', approve it, then tap Retry Phone role. Otherwise the phone or its policy may prohibit this role."
+                        "accessibility" -> "Helper not approved. Tap Helper blocked? Fix permissions if needed, then Help Me Set Up."
+                        "homeSettings" -> "Home app not approved yet. Tap Help Me Set Up to retry this step."
+                        "phoneSettings" -> "Phone app not approved yet. Tap Help Me Set Up to retry this step."
+                        "phoneAppInfo" -> "Phone app not approved yet. Tap Help Me Set Up or open extra setup tools for App info."
                         else -> "Return to guided setup to review permission status."
                     }
                 }
@@ -811,55 +813,19 @@ class MainActivity : ComponentActivity() {
                     val powerAccessReady = remember(resumeCount, guidedPulse) {
                         isShutdownHelperApproved()
                     }
-                    val setupSteps = PermissionSetupSteps.build(
-                        phonePermissionGranted =
-                            checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED,
-                        needsNotificationPermission = Build.VERSION.SDK_INT >= 33,
-                        notificationGranted = Build.VERSION.SDK_INT < 33 ||
-                            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED,
-                        helperRequired = ShutdownPowerHelper.isEnabled(this@MainActivity),
-                        helperEnabled = powerAccessReady,
-                        phoneRoleHeld = phoneReady,
-                        homeRequired = autoOnBoot,
-                        homeRoleHeld = homeReady
-                    )
+                    val setupSteps = currentSetupSteps()
                     PermissionSetupCard(
                         steps = setupSteps,
-                        onNext = { key ->
-                            when (key) {
-                                SetupPermissionKey.PHONE_PERMISSION ->
-                                    permissionsLauncher.launch(arrayOf(Manifest.permission.CALL_PHONE))
-                                SetupPermissionKey.NOTIFICATIONS ->
-                                    if (Build.VERSION.SDK_INT >= 33)
-                                        permissionsLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
-                                SetupPermissionKey.SHUTDOWN_HELPER -> {
-                                    accessibilitySettingsOpened = true
-                                    try {
-                                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                                        status = "Find Daily SIM Caller, then turn on Shut Down Helper. Return here to check."
-                                    } catch (_: ActivityNotFoundException) {
-                                        status = "Open Android Settings > Accessibility to enable Shut Down Helper."
-                                    } catch (_: SecurityException) {
-                                        status = "Android blocked this shortcut. Open Settings > Accessibility yourself."
-                                    }
-                                }
-                                SetupPermissionKey.PHONE_APP -> {
-                                    phoneSettingsOpened = true
-                                    requestDialerRole()
-                                }
-                                SetupPermissionKey.HOME_APP -> {
-                                    homeSettingsOpened = true
-                                    requestHomeRole()
-                                }
-                            }
-                        },
+                        onNext = { _ -> beginGuidedSetup() },
                         onCheckAgain = { guidedPulse++ },
-                        onHelp = {
+                        onHelp = { beginGuidedSetup() },
+                        onBlockedHelper = {
                             guidedSetupActive = false
                             guidedAwaiting = ""
                             guidedSettingsOpenedAtResume = -1
+                            showSetupShortcuts = true
                             restrictedHelperStep = 1
-                            status = "The guide below shows extra steps for Android's restricted settings."
+                            status = "If Android blocks Shut Down Helper, follow these recovery steps."
                         }
                     )
                     val usedColors = ButtonDefaults.outlinedButtonColors(
@@ -873,22 +839,15 @@ class MainActivity : ComponentActivity() {
                     if (showSetupShortcuts) {
                     OutlinedButton(
                         onClick = {
-                            if (isShutdownHelperApproved()) {
-                                restrictedHelperStep = 0
-                                beginGuidedSetup()
-                            } else {
-                                // Keep the role/permission flow idle while the user
-                                // performs the restricted-settings handoff manually.
-                                guidedSetupActive = false
-                                guidedAwaiting = ""
-                                guidedSettingsOpenedAtResume = -1
-                                restrictedHelperStep = 1
-                                status = "Follow the setup steps below. Android will ask you to approve access."
-                            }
+                            guidedSetupActive = false
+                            guidedAwaiting = ""
+                            guidedSettingsOpenedAtResume = -1
+                            restrictedHelperStep = 1
+                            status = "Shut Down Helper troubleshooting is below."
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Help Me Set Up")
+                        Text("Troubleshoot Shut Down Helper")
                     }
                     if (restrictedHelperStep != 0) {
                         Card(modifier = Modifier.fillMaxWidth()) {
