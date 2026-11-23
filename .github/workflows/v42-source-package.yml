@@ -1,0 +1,35 @@
+name: Android Studio v42 source package
+
+on:
+  push:
+    branches: ['feature/v1.3.19-v42-setup-first-launch-repair']
+
+permissions:
+  contents: read
+
+jobs:
+  source-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout complete Android Studio project
+        uses: actions/checkout@v4
+      - name: Package Android Studio source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=zip \
+            --prefix=DailySIMCaller_AndroidStudio_v42/ \
+            --output=DailySIMCaller_AndroidStudio_v42_Source.zip \
+            HEAD
+          unzip -t DailySIMCaller_AndroidStudio_v42_Source.zip
+          unzip -Z1 DailySIMCaller_AndroidStudio_v42_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v42/settings.gradle.kts"
+          unzip -Z1 DailySIMCaller_AndroidStudio_v42_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v42/gradlew.bat"
+          unzip -Z1 DailySIMCaller_AndroidStudio_v42_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v42/gradle/wrapper/gradle-wrapper.jar"
+          unzip -Z1 DailySIMCaller_AndroidStudio_v42_Source.zip | grep -Fx "DailySIMCaller_AndroidStudio_v42/app/src/main/java/com/example/dailysimcaller/MainActivity.kt"
+      - name: Upload Android Studio source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-sim-caller-android-studio-v42-source
+          path: DailySIMCaller_AndroidStudio_v42_Source.zip
+          if-no-files-found: error
