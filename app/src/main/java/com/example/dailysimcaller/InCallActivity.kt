@@ -27,6 +27,7 @@ class InCallActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        SpeakerphoneControl.initialize(this)
         if (Build.VERSION.SDK_INT >= 27) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -53,10 +54,9 @@ class InCallActivity : ComponentActivity() {
                     Text("Call state: ${stateLabel(state)}")
                     ConnectedCallTimer()
                     OutlinedButton(
-                        enabled = SpeakerphoneControl.callPresent,
-                        onClick = { SpeakerphoneControl.toggle() },
+                        onClick = { SpeakerphoneControl.toggle(this@InCallActivity) },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text(if (SpeakerphoneControl.speakerOn)
+                    ) { Text(if (SpeakerphoneControl.speakerPreferred)
                         "Speaker ON - Turn OFF" else "Speaker OFF - Turn ON") }
                     Text(SpeakerphoneControl.message)
                     if (call != null) {
