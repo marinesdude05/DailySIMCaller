@@ -174,6 +174,7 @@ class MainActivity : ComponentActivity() {
             var homeSettingsOpened by rememberSaveable { mutableStateOf(false) }
             var accessibilitySettingsOpened by rememberSaveable { mutableStateOf(false) }
             var showDetails by rememberSaveable { mutableStateOf(false) }
+            var showSetupShortcuts by rememberSaveable { mutableStateOf(false) }
             // Extra operational controls are collapsed on a fresh screen.
             var showAdminOnly by rememberSaveable { mutableStateOf(false) }
             // A user-driven guide for Android's restricted Accessibility settings.
@@ -488,6 +489,8 @@ class MainActivity : ComponentActivity() {
             val permissionsLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
             ) { _ ->
+                // Recompute verified checklist state after a runtime permission prompt.
+                guidedPulse++
                 val allGranted = checkSelfPermission(Manifest.permission.CALL_PHONE) ==
                     PackageManager.PERMISSION_GRANTED &&
                     (Build.VERSION.SDK_INT < 33 || checkSelfPermission(
@@ -768,8 +771,7 @@ class MainActivity : ComponentActivity() {
                         else "Speaker is OFF for every call - Turn ON")
                     }
                     HorizontalDivider()
-                    Text("Set Up Your Phone", style = MaterialTheme.typography.titleMedium)
-                    // Re-read Android roles each time the app returns from Settings.
+                    // Android-verified permissions are checked after prompts and Settings returns.
                     val phoneReady = remember(resumeCount, guidedPulse) {
                         StartupMode.isDefaultPhoneApp(this@MainActivity)
                     }
@@ -779,10 +781,66 @@ class MainActivity : ComponentActivity() {
                     val powerAccessReady = remember(resumeCount, guidedPulse) {
                         isShutdownHelperApproved()
                     }
+                    val setupSteps = PermissionSetupSteps.build(
+                        phonePermissionGranted =
+                            checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED,
+                        needsNotificationPermission = Build.VERSION.SDK_INT >= 33,
+                        notificationGranted = Build.VERSION.SDK_INT < 33 ||
+                            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED,
+                        helperRequired = ShutdownPowerHelper.isEnabled(this@MainActivity),
+                        helperEnabled = powerAccessReady,
+                        phoneRoleHeld = phoneReady,
+                        homeRequired = autoOnBoot,
+                        homeRoleHeld = homeReady
+                    )
+                    PermissionSetupCard(
+                        steps = setupSteps,
+                        onNext = { key ->
+                            when (key) {
+                                SetupPermissionKey.PHONE_PERMISSION ->
+                                    permissionsLauncher.launch(arrayOf(Manifest.permission.CALL_PHONE))
+                                SetupPermissionKey.NOTIFICATIONS ->
+                                    if (Build.VERSION.SDK_INT >= 33)
+                                        permissionsLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+                                SetupPermissionKey.SHUTDOWN_HELPER -> {
+                                    accessibilitySettingsOpened = true
+                                    try {
+                                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                        status = "Find Daily SIM Caller, then turn on Shut Down Helper. Return here to check."
+                                    } catch (_: ActivityNotFoundException) {
+                                        status = "Open Android Settings > Accessibility to enable Shut Down Helper."
+                                    } catch (_: SecurityException) {
+                                        status = "Android blocked this shortcut. Open Settings > Accessibility yourself."
+                                    }
+                                }
+                                SetupPermissionKey.PHONE_APP -> {
+                                    phoneSettingsOpened = true
+                                    requestDialerRole()
+                                }
+                                SetupPermissionKey.HOME_APP -> {
+                                    homeSettingsOpened = true
+                                    requestHomeRole()
+                                }
+                            }
+                        },
+                        onCheckAgain = { guidedPulse++ },
+                        onHelp = {
+                            guidedSetupActive = false
+                            guidedAwaiting = ""
+                            guidedSettingsOpenedAtResume = -1
+                            restrictedHelperStep = 1
+                            status = "The guide below shows extra steps for Android's restricted settings."
+                        }
+                    )
                     val usedColors = ButtonDefaults.outlinedButtonColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant,
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    TextButton(
+                        onClick = { showSetupShortcuts = !showSetupShortcuts },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (showSetupShortcuts) "Hide extra setup tools" else "More setup tools") }
+                    if (showSetupShortcuts) {
                     OutlinedButton(
                         onClick = {
                             if (isShutdownHelperApproved()) {
@@ -969,6 +1027,7 @@ class MainActivity : ComponentActivity() {
                             contentColor = Color.White
                         )
                     ) { Text("Power Menu") }
+                    } // Optional shortcuts: the verified checklist remains the default setup.
                     Button(enabled = valid && !CallQueue.running && !retryingCalls,
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
