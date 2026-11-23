@@ -164,6 +164,39 @@ internal fun PermissionSetupCard(
             )
             steps.forEachIndexed { index, step ->
                 val highlighted = step.key == current?.key
+                // Put helper recovery exactly above the helper's checklist row.
+                if (step.key == SetupPermissionKey.SHUTDOWN_HELPER &&
+                    helperAttemptedBlocked && !step.done) {
+                if (helperAttemptedBlocked && steps.any {
+                        it.key == SetupPermissionKey.SHUTDOWN_HELPER && !it.done
+                    }) {
+                    Surface(color = Color(0xFF3C3028), shape = RoundedCornerShape(10.dp)) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                "Shut Down Helper needs one more step",
+                                color = warning,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "Android says this helper is controlled by restricted settings. " +
+                                    "Open Daily SIM Caller App info, tap the three-dot menu, " +
+                                    "and choose Allow restricted settings if available. " +
+                                    "Then come back and turn on Shut Down Helper in Accessibility.",
+                                color = heading,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Button(
+                                onClick = onBlockedHelper,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = action)
+                            ) { Text("Fix helper permissions in App info") }
+                        }
+                    }
+                }
+                }
                 Surface(
                     modifier = Modifier.fillMaxWidth()
                         .clickable {
@@ -211,38 +244,6 @@ internal fun PermissionSetupCard(
                             Text("Open ›", color = warning,
                                 style = MaterialTheme.typography.labelMedium)
                         }
-                    }
-                }
-            }
-
-            // Android blocks sideloaded Accessibility services on some devices.
-            // Offer the same recovery seen in the recording, without an extra wizard.
-            if (helperAttemptedBlocked && steps.any {
-                    it.key == SetupPermissionKey.SHUTDOWN_HELPER && !it.done
-                }) {
-                Surface(color = Color(0xFF3C3028), shape = RoundedCornerShape(10.dp)) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            "Shut Down Helper needs one more step",
-                            color = warning,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            "Android says this helper is controlled by restricted settings. " +
-                                "Open Daily SIM Caller App info, tap the three-dot menu, " +
-                                "and choose Allow restricted settings if available. " +
-                                "Then come back and turn on Shut Down Helper in Accessibility.",
-                            color = heading,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Button(
-                            onClick = onBlockedHelper,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = action)
-                        ) { Text("Fix helper permissions in App info") }
                     }
                 }
             }
