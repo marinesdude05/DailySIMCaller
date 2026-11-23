@@ -181,8 +181,8 @@ class MainActivity : ComponentActivity() {
             // An app may open Settings but cannot reveal the protected overflow menu
             // or approve restricted settings on the user's behalf.
             var restrictedHelperStep by rememberSaveable { mutableIntStateOf(0) }
-            // The setup-complete restart is attempted once per explicit setup session.
-            var restartMenuAutoOpened by rememberSaveable { mutableStateOf(false) }
+            // Persist the one-time attempt across the reboot and Activity recreation.
+            // This flag only affects setup restart, not auto-calling or queue power-off.
             var setupInteractionStarted by rememberSaveable { mutableStateOf(false) }
             var helperAttempted by rememberSaveable { mutableStateOf(false) }
             var setupRestartStatus by rememberSaveable { mutableStateOf("") }
@@ -753,8 +753,7 @@ class MainActivity : ComponentActivity() {
                         prefs.edit().putBoolean("guided_setup_complete_v136", true).apply()
                         guidedSetupActive = false
                         restrictedHelperStep = 4
-                        restartMenuAutoOpened = false
-                        status = "Setup complete. Requesting a restart. No calls started."
+                        status = "Setup complete. Android has verified every required step."
                     }
                 }
             }
@@ -784,20 +783,6 @@ class MainActivity : ComponentActivity() {
                         "phoneAppInfo" -> "Phone app not approved yet. Tap Help Me Set Up or open extra setup tools for App info."
                         else -> "Return to guided setup to review permission status."
                     }
-                }
-            }
-
-            // Once setup is complete, request reboot once. Never reboot during a call.
-            // Android device-owner policy reboots directly; the helper uses only the
-            // exact Restart control in Android's system power menu when available.
-            LaunchedEffect(restrictedHelperStep) {
-                if (restrictedHelperStep == 4 && !restartMenuAutoOpened) {
-                    restartMenuAutoOpened = true
-                    delay(450)
-                    val requested = ShutdownPowerHelper.restartAfterSetup(this@MainActivity)
-                    status = if (requested)
-                        "Restart requested. If Android did not restart, use Retry Automatic Restart or restart manually."
-                    else ShutdownPowerHelper.message
                 }
             }
 
@@ -875,20 +860,38 @@ class MainActivity : ComponentActivity() {
                     }
                     val setupSteps = currentSetupSteps()
                     val allSetupReady = PermissionSetupSteps.allApproved(setupSteps)
-                    // The older wizard reached 100% without requesting restart when
-                    // setup was finished by tapping individual rows. Watch that
-                    // one user-initiated session and request Restart exactly once.
-                    LaunchedEffect(allSetupReady, setupInteractionStarted, resumeCount) {
-                        if (allSetupReady && setupInteractionStarted &&
-                            !restartMenuAutoOpened) {
-                            setupInteractionStarted = false
-                            restartMenuAutoOpened = true
-                            delay(800)
-                            val requested = ShutdownPowerHelper.restartAfterSetup(this@MainActivity)
-                            setupRestartStatus = if (requested)
-                                "Restart requested. If the phone stays on, tap Finish setup — Restart phone again."
-                            else ShutdownPowerHelper.message
-                            status = setupRestartStatus
+                    // Once Android verifies 100% setup, request ONE automatic
+                    // restart even if the final permission was enabled in Settings.
+                    // Persist the attempt BEFORE opening Android's power menu; that
+                    // way returning from System UI or rebooting cannot cause a loop.
+                    LaunchedEffect(allSetupReady, resumeCount) {
+                        if (allSetupReady && isVisible) {
+                            // Give Android's Accessibility service a moment to bind
+                            // after the last permission screen closes.
+                            delay(900)
+                            if (SetupRestartPolicy.shouldRequest(
+                                    allApproved = PermissionSetupSteps.allApproved(currentSetupSteps()),
+                                    foreground = isVisible,
+                                    alreadyAttempted = prefs.getBoolean(
+                                        SetupRestartPolicy.ATTEMPTED_PREF, false),
+                                    busyWithCall = CallQueue.running ||
+                                        PhoneCallUi.active != null ||
+                                        retryingCalls
+                                )) {
+                                // Commit synchronously before the system restart request.
+                                // Keep an unconfirmed attempt latched to prevent loops.
+                                if (prefs.edit().putBoolean(
+                                        SetupRestartPolicy.ATTEMPTED_PREF, true).commit()) {
+                                    setupInteractionStarted = false
+                                    val requested = ShutdownPowerHelper.restartAfterSetup(this@MainActivity)
+                                    setupRestartStatus = if (requested)
+                                        "Automatic restart requested. If the phone stays on, tap Finish setup — Restart phone."
+                                    else ShutdownPowerHelper.message
+                                    status = setupRestartStatus
+                                } else {
+                                    setupRestartStatus = "Could not save restart state. Tap Finish setup — Restart phone."
+                                }
+                            }
                         }
                     }
                     val phoneRoleBlocked = !phoneReady &&
