@@ -12,6 +12,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 
 /**
@@ -30,6 +31,12 @@ object ShutdownPowerHelper {
 
     var message by mutableStateOf("Power-off setting follows saved preference; helper requires Accessibility")
         private set
+
+    /** Recompose setup UI and retry pending setup restart when Android binds the service. */
+    var connectionVersion by mutableIntStateOf(0)
+        private set
+
+    internal fun onConnectionChanged() { connectionVersion++ }
 
     fun isEnabled(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -66,12 +73,15 @@ object ShutdownPowerHelper {
     fun testPowerMenu(): Boolean {
         val service = ShutdownAccessibilityService.instance
         if (service == null) {
-            message = "Enable Daily SIM Caller shutdown helper in Accessibility settings first"
+            message = "Power Menu unavailable: Shut Down Helper is not connected. Open Android Accessibility settings, enable the helper, and come back."
             return false
         }
         // Test only opens the menu; never clicks Power off.
         val result = service.openPowerMenu(testOnly = true)
-        message = if (result) "Test menu opened. Close with Back; no shutdown requested" else "Android did not open the power menu"
+        message = if (result)
+            "Power menu requested. If no menu appeared, Android may restrict this action on your phone."
+        else
+            "Android refused to open the power menu. Check the helper in Accessibility settings; the device may not support this action."
         return result
     }
 
@@ -189,12 +199,16 @@ class ShutdownAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        ShutdownPowerHelper.report("Shutdown helper connected. Auto power off requires opt-in")
+        ShutdownPowerHelper.onConnectionChanged()
+        ShutdownPowerHelper.report("Shutdown Helper connected and ready to request Android's power menu.")
     }
 
     override fun onDestroy() {
         cancelPowerOffRequest()
-        if (instance === this) instance = null
+        if (instance === this) {
+            instance = null
+            ShutdownPowerHelper.onConnectionChanged()
+        }
         super.onDestroy()
     }
 
@@ -226,6 +240,9 @@ class ShutdownAccessibilityService : AccessibilityService() {
     fun openPowerMenu(testOnly: Boolean): Boolean {
         cancelPowerOffRequest()
         val opened = performGlobalAction(GLOBAL_ACTION_POWER_DIALOG)
+        if (!opened) {
+            ShutdownPowerHelper.report("Android rejected the Power Menu action. Check the helper's Accessibility switch or use the physical power key.")
+        }
         if (opened && !testOnly) {
             pendingShutdown = true
             validUntil = SystemClock.elapsedRealtime() + 12_000L
