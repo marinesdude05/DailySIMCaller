@@ -76,6 +76,10 @@ internal object PermissionSetupSteps {
             "Choose Phone app", phoneRoleHeld
         ))
     }
+
+    /** The checklist and the guided launcher must agree on the next pending step. */
+    fun next(steps: List<SetupPermissionStep>): SetupPermissionStep? =
+        steps.firstOrNull { !it.done }
 }
 
 @Composable
@@ -83,10 +87,11 @@ internal fun PermissionSetupCard(
     steps: List<SetupPermissionStep>,
     onNext: (SetupPermissionKey) -> Unit,
     onCheckAgain: () -> Unit,
-    onHelp: () -> Unit
+    onHelp: () -> Unit,
+    onBlockedHelper: () -> Unit
 ) {
     val done = steps.count { it.done }
-    val next = steps.firstOrNull { !it.done }
+    val next = PermissionSetupSteps.next(steps)
     val fraction = if (steps.isEmpty()) 1f else done.toFloat() / steps.size
 
     Card(
@@ -195,7 +200,12 @@ internal fun PermissionSetupCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = onCheckAgain) { Text("Check again") }
-                TextButton(onClick = onHelp) { Text("Need help?") }
+                TextButton(onClick = onHelp) { Text("Help Me Set Up") }
+            }
+            if (next?.key == SetupPermissionKey.SHUTDOWN_HELPER) {
+                TextButton(onClick = onBlockedHelper) {
+                    Text("Helper blocked? Fix permissions")
+                }
             }
             Text(
                 "Android asks you to approve each step. Only approved steps show Done.",
