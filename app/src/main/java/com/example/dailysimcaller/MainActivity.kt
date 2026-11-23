@@ -815,7 +815,41 @@ class MainActivity : ComponentActivity() {
                     val setupSteps = currentSetupSteps()
                     PermissionSetupCard(
                         steps = setupSteps,
-                        onNext = { _ -> beginGuidedSetup() },
+                        onNext = { key ->
+                            // A row's Next button opens THAT step, not the earliest
+                            // unfinished one; Android still controls every grant.
+                            guidedSetupActive = false
+                            guidedAwaiting = ""
+                            guidedSettingsOpenedAtResume = -1
+                            when (key) {
+                                SetupPermissionKey.PHONE_PERMISSION ->
+                                    permissionsLauncher.launch(arrayOf(Manifest.permission.CALL_PHONE))
+                                SetupPermissionKey.NOTIFICATIONS -> {
+                                    if (Build.VERSION.SDK_INT >= 33) {
+                                        permissionsLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+                                    }
+                                }
+                                SetupPermissionKey.HOME_APP -> {
+                                    homeSettingsOpened = true
+                                    requestHomeRole()
+                                }
+                                SetupPermissionKey.SHUTDOWN_HELPER -> {
+                                    accessibilitySettingsOpened = true
+                                    try {
+                                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                        status = "Turn on Shut Down Helper in Android, then return here."
+                                    } catch (_: ActivityNotFoundException) {
+                                        status = "Open Android Settings > Accessibility manually."
+                                    } catch (_: SecurityException) {
+                                        status = "Android blocked this shortcut. Open Settings > Accessibility manually."
+                                    }
+                                }
+                                SetupPermissionKey.PHONE_APP -> {
+                                    phoneSettingsOpened = true
+                                    requestDialerRole()
+                                }
+                            }
+                        },
                         onCheckAgain = { guidedPulse++ },
                         onHelp = { beginGuidedSetup() },
                         onBlockedHelper = {
