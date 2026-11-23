@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 30
-        versionName = "1.3.19-permission-flow-fix-test"
+        versionCode = 31
+        versionName = "1.3.19-next-button-fix-test"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
