@@ -489,19 +489,18 @@ class MainActivity : ComponentActivity() {
             }
             val permissionsLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
-            ) { _ ->
-                // A single granted permission must advance even if a later one is missing.
-                // Read Android's actual grants; a denial pauses without retrying in a loop.
-                val pendingPermission = PermissionSetupSteps.next(currentSetupSteps())?.key
+            ) { results ->
+                // Each prompt requests one permission; approval advances to the next
+                // step even when other permissions have not yet been requested.
+                val approved = results.isNotEmpty() && results.values.all { it }
                 guidedPulse++
                 if (guidedAwaiting == "permissions") {
                     guidedAwaiting = ""
-                    if (pendingPermission == SetupPermissionKey.PHONE_PERMISSION ||
-                        pendingPermission == SetupPermissionKey.NOTIFICATIONS) {
+                    if (approved) {
+                        status = "Permission approved. Moving to the next step."
+                    } else {
                         guidedSetupActive = false
                         status = "Permission not approved yet. Tap Help Me Set Up to try again."
-                    } else {
-                        status = "Permission approved. Moving to the next step."
                     }
                 }
             }
