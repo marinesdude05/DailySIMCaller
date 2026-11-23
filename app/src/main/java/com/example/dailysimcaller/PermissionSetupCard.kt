@@ -73,15 +73,15 @@ internal object PermissionSetupSteps {
             "Choose Daily SIM Caller as Home for tests after restart.", "Choose Home app",
             homeRoleHeld
         ))
-        if (helperRequired) add(SetupPermissionStep(
-            SetupPermissionKey.SHUTDOWN_HELPER, "Shut Down Helper",
-            "In Accessibility, turn on Daily SIM Caller shutdown helper.", "Open helper settings",
-            helperEnabled
-        ))
         add(SetupPermissionStep(
             SetupPermissionKey.PHONE_APP, "Phone app",
             "Choose Daily SIM Caller as Android's default Phone app.", "Choose Phone app",
             phoneRoleHeld
+        ))
+        if (helperRequired) add(SetupPermissionStep(
+            SetupPermissionKey.SHUTDOWN_HELPER, "Shut Down Helper",
+            "In Accessibility, turn on Daily SIM Caller shutdown helper.", "Open helper settings",
+            helperEnabled
         ))
     }
 
@@ -110,7 +110,9 @@ internal fun PermissionSetupCard(
     onFixPhoneRole: () -> Unit,
     helperAttemptedBlocked: Boolean,
     onRestartPhone: () -> Unit,
-    restartStatus: String
+    restartStatus: String,
+    appInfoReturnFor: SetupPermissionKey?,
+    onContinueAfterAppInfo: (SetupPermissionKey) -> Unit
 ) {
     // The reference recordings show a compact, tappable checklist with green
     // confirmations and warning indicators, followed by Android's own settings.
@@ -164,9 +166,50 @@ internal fun PermissionSetupCard(
             )
             steps.forEachIndexed { index, step ->
                 val highlighted = step.key == current?.key
+                if (step.key == appInfoReturnFor && !step.done) {
+                    Surface(
+                        color = Color(0xFF213F40),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("Welcome back from App info",
+                                color = good, fontWeight = FontWeight.Bold)
+                            Text(
+                                if (step.key == SetupPermissionKey.SHUTDOWN_HELPER)
+                                    "If you chose Allow restricted settings, the next step is to turn on Shut Down Helper in Accessibility. Android will confirm when it's enabled."
+                                else
+                                    "If you chose Allow restricted settings, the next step is to choose Daily SIM Caller as your Phone app. Android will confirm whether the selection worked.",
+                                color = heading,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Button(
+                                onClick = { onContinueAfterAppInfo(step.key) },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = action)
+                            ) {
+                                Text(
+                                    if (step.key == SetupPermissionKey.SHUTDOWN_HELPER)
+                                        "Continue to Shut Down Helper"
+                                    else "Continue to Phone app"
+                                )
+                            }
+                            TextButton(
+                                onClick = {
+                                    if (step.key == SetupPermissionKey.SHUTDOWN_HELPER)
+                                        onBlockedHelper()
+                                    else onFixPhoneRole()
+                                }
+                            ) { Text("Open App info again", color = heading) }
+                        }
+                    }
+                }
                 // Put helper recovery exactly above the helper's checklist row.
                 if (step.key == SetupPermissionKey.SHUTDOWN_HELPER &&
-                    helperAttemptedBlocked && !step.done) {
+                    helperAttemptedBlocked && !step.done &&
+                    appInfoReturnFor != SetupPermissionKey.SHUTDOWN_HELPER) {
                     Surface(color = Color(0xFF3C3028), shape = RoundedCornerShape(10.dp)) {
                         Column(
                             modifier = Modifier.padding(12.dp),
@@ -190,6 +233,30 @@ internal fun PermissionSetupCard(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(containerColor = action)
                             ) { Text("Fix helper permissions in App info") }
+                        }
+                    }
+                }
+                if (phoneRoleBlocked && step.key == SetupPermissionKey.PHONE_APP &&
+                    !step.done && appInfoReturnFor != SetupPermissionKey.PHONE_APP) {
+                    Surface(color = Color(0xFF3C3028), shape = RoundedCornerShape(10.dp)) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(7.dp)
+                        ) {
+                            Text("Phone app blocked by Android?", color = warning,
+                                fontWeight = FontWeight.Bold)
+                            Text(
+                                "Android may restrict default Phone app selection for sideloaded apps. " +
+                                    "Open App info, tap the three-dot menu, and select " +
+                                    "Allow restricted settings if Android offers it. " +
+                                    "Then return and tap Phone app again.",
+                                color = heading, style = MaterialTheme.typography.bodySmall
+                            )
+                            Button(
+                                onClick = onFixPhoneRole,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = action)
+                            ) { Text("Open Daily SIM Caller App info") }
                         }
                     }
                 }
@@ -244,29 +311,6 @@ internal fun PermissionSetupCard(
                 }
             }
 
-            if (phoneRoleBlocked && steps.any { it.key == SetupPermissionKey.PHONE_APP && !it.done }) {
-                Surface(color = Color(0xFF3C3028), shape = RoundedCornerShape(10.dp)) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp)
-                    ) {
-                        Text("Phone app blocked by Android?", color = warning,
-                            fontWeight = FontWeight.Bold)
-                        Text(
-                            "Android may restrict default Phone app selection for sideloaded apps. " +
-                                "Open App info, tap the three-dot menu, and select " +
-                                "Allow restricted settings if Android offers it. " +
-                                "Then return and tap Phone app again.",
-                            color = heading, style = MaterialTheme.typography.bodySmall
-                        )
-                        Button(
-                            onClick = onFixPhoneRole,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = action)
-                        ) { Text("Open Daily SIM Caller App info") }
-                    }
-                }
-            }
             if (current != null) {
                 Button(
                     onClick = { onNext(current.key) },
