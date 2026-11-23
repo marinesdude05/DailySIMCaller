@@ -20,6 +20,16 @@ class PermissionSetupStepsTest {
         assertEquals(5, steps.size)
         assertEquals(0, steps.count { it.done })
         assertEquals(SetupPermissionKey.PHONE_PERMISSION, steps.first().key)
+        assertEquals(
+            listOf(
+                SetupPermissionKey.PHONE_PERMISSION,
+                SetupPermissionKey.NOTIFICATIONS,
+                SetupPermissionKey.HOME_APP,
+                SetupPermissionKey.SHUTDOWN_HELPER,
+                SetupPermissionKey.PHONE_APP
+            ),
+            steps.map { it.key }
+        )
     }
 
     @Test fun optionalHomeAndNotificationsAreNotShownWhenNotRequired() {
@@ -50,6 +60,6 @@ class PermissionSetupStepsTest {
             homeRoleHeld = false
         )
         assertEquals(3, steps.count { it.done })
-        assertEquals(SetupPermissionKey.SHUTDOWN_HELPER, steps.first { !it.done }.key)
+        assertEquals(SetupPermissionKey.HOME_APP, steps.first { !it.done }.key)
     }
 }
