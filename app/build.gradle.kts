@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 41
-        versionName = "1.3.19-power-menu-diagnostics-test"
+        versionCode = 42
+        versionName = "1.3.19-first-launch-setup-repair-test"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
