@@ -179,7 +179,7 @@ class MainActivity : ComponentActivity() {
             // An app may open Settings but cannot reveal the protected overflow menu
             // or approve restricted settings on the user's behalf.
             var restrictedHelperStep by rememberSaveable { mutableIntStateOf(0) }
-            // The setup-complete restart dialog is offered only once per guide completion.
+            // The setup-complete restart is attempted at most once per completed guide.
             var restartMenuAutoOpened by rememberSaveable { mutableStateOf(false) }
 
             fun setupLabel(label: String, granted: Boolean = false, opened: Boolean = false): String =
@@ -660,7 +660,7 @@ class MainActivity : ComponentActivity() {
                 guidedSetupActive = false
                 restrictedHelperStep = 4
                 restartMenuAutoOpened = false
-                status = "Setup complete. The Android power menu will open so you can choose Restart. No calls started."
+                status = "Setup complete. Requesting a restart. No calls started."
             }
 
             // Android Settings (Accessibility and Phone/Home fallback) has no simple
@@ -691,18 +691,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Once all required setup checks pass, offer the Android restart menu.
-            // Only the user can choose Restart; this never performs automatic shutdown.
+            // Once setup is complete, request reboot once. Never reboot during a call.
+            // Android device-owner policy reboots directly; the helper uses only the
+            // exact Restart control in Android's system power menu when available.
             LaunchedEffect(restrictedHelperStep) {
                 if (restrictedHelperStep == 4 && !restartMenuAutoOpened) {
                     restartMenuAutoOpened = true
-                    delay(450) // Let the completed step render before showing the system dialog.
-                    val opened = ShutdownPowerHelper.showRestartMenu()
-                    status = if (opened) {
-                        "Setup complete. Tap Restart in Android's power menu when ready."
-                    } else {
-                        "Setup complete. Tap Open Power Menu below, or hold the phone's power button to restart."
-                    }
+                    delay(450)
+                    val requested = ShutdownPowerHelper.restartAfterSetup(this@MainActivity)
+                    status = if (requested)
+                        "Restart requested. If Android did not restart, use Retry Automatic Restart or restart manually."
+                    else ShutdownPowerHelper.message
                 }
             }
 
@@ -861,7 +860,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                     4 -> {
                                         Text("Step 4 of 4: Restart Phone", style = MaterialTheme.typography.titleMedium)
-                                        Text("Setup is complete. The Android power menu lets you choose Restart. The app will not restart or shut down the phone for you.")
+                                        Text("Setup is complete. An automatic restart is requested once. If Android blocks it, use Retry Automatic Restart or reboot manually with the phone power button.")
                                         Button(
                                             modifier = Modifier.fillMaxWidth(),
                                             colors = ButtonDefaults.buttonColors(
@@ -869,17 +868,17 @@ class MainActivity : ComponentActivity() {
                                                 contentColor = Color.White
                                             ),
                                             onClick = {
-                                                val opened = ShutdownPowerHelper.showRestartMenu()
-                                                status = if (opened)
-                                                    "Tap Restart in Android's power menu when ready."
-                                                else "Power menu unavailable. Hold the phone's side power button to restart."
+                                                val requested = ShutdownPowerHelper.restartAfterSetup(this@MainActivity)
+                                                status = if (requested)
+                                                    "Restart requested; Android may still require a confirmation."
+                                                else ShutdownPowerHelper.message
                                             }
-                                        ) { Text("Open Power Menu") }
+                                        ) { Text("Retry Automatic Restart") }
                                         OutlinedButton(
                                             modifier = Modifier.fillMaxWidth(),
                                             onClick = {
                                                 restrictedHelperStep = 0
-                                                status = "Setup complete. You can restart later using Power Menu."
+                                                status = "Setup complete. Automatic restart was skipped; you can reboot manually."
                                             }
                                         ) { Text("Finish Without Restarting") }
                                     }
@@ -896,14 +895,15 @@ class MainActivity : ComponentActivity() {
                     }
                     OutlinedButton(
                         onClick = {
-                            homeSettingsOpened = true
-                            openDefaultAppSettings(home = true, guided = false)
+                            accessibilitySettingsOpened = true
+                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = if (homeReady || homeSettingsOpened) usedColors else ButtonDefaults.outlinedButtonColors()
+                        colors = if (powerAccessReady || accessibilitySettingsOpened) usedColors
+                            else ButtonDefaults.outlinedButtonColors()
                     ) {
-                        Text(setupLabel("Set Home App", granted = homeReady,
-                            opened = homeSettingsOpened))
+                        Text(setupLabel("Shut Down Helper", granted = powerAccessReady,
+                            opened = accessibilitySettingsOpened))
                     }
                     OutlinedButton(
                         onClick = {
@@ -918,15 +918,14 @@ class MainActivity : ComponentActivity() {
                     }
                     OutlinedButton(
                         onClick = {
-                            accessibilitySettingsOpened = true
-                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                            homeSettingsOpened = true
+                            openDefaultAppSettings(home = true, guided = false)
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = if (powerAccessReady || accessibilitySettingsOpened) usedColors
-                            else ButtonDefaults.outlinedButtonColors()
+                        colors = if (homeReady || homeSettingsOpened) usedColors else ButtonDefaults.outlinedButtonColors()
                     ) {
-                        Text(setupLabel("Shut Down Helper", granted = powerAccessReady,
-                            opened = accessibilitySettingsOpened))
+                        Text(setupLabel("Set Home App", granted = homeReady,
+                            opened = homeSettingsOpened))
                     }
                     // Fix Permissions is a shortcut, not an approval state.
                     // Android owns the restricted-settings menu and user confirmation.
@@ -1066,14 +1065,7 @@ class MainActivity : ComponentActivity() {
                             })
                         }
                         if (autoOnBoot) {
-                            Text("Set Home App and unlock your phone after restart. This replaces your usual Home screen.")
-                            OutlinedButton(onClick = { requestHomeRole() }, modifier = Modifier.fillMaxWidth()) {
-                                Text("Choose Home App")
-                            }
-                            OutlinedButton(onClick = { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) },
-                                modifier = Modifier.fillMaxWidth()) {
-                                Text("Restore Old Home Screen")
-                            }
+                            Text("To run after reboot, set Daily SIM Caller as Home from the main setup buttons and unlock the phone after restart.")
                         }
                         Button(onClick = {
                             callRetryJob?.cancel()
