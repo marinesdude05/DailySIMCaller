@@ -256,7 +256,7 @@ internal fun PermissionSetupCard(
                                 onClick = onFixPhoneRole,
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(containerColor = action)
-                            ) { Text("Open Daily SIM Caller App info") }
+                            ) { Text("Open Caller App Info") }
                         }
                     }
                 }
