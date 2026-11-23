@@ -972,6 +972,58 @@ class MainActivity : ComponentActivity() {
                     }
                     if (showAdminOnly) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        HorizontalDivider()
+                        Text("Default Apps (managed devices)",
+                            style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (ManagedDefaultApps.isDeviceOwner(this@MainActivity))
+                                "Device-owner mode: these switches request real Android default-app changes."
+                            else
+                                "Direct changes require device-owner provisioning. This normal installation cannot switch Android defaults without confirmation."
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text("Daily SIM Caller as Home app", modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = homeReady,
+                                onCheckedChange = { desired ->
+                                    status = if (ManagedDefaultApps.isDeviceOwner(this@MainActivity)) {
+                                        ManagedDefaultApps.setHome(this@MainActivity, desired)
+                                    } else {
+                                        // No false ON/OFF state: launch the real Android chooser.
+                                        openDefaultAppSettings(home = true, guided = false)
+                                        "Select your preferred Home app in Android. The switch updates only after Android confirms the role."
+                                    }
+                                    guidedPulse++
+                                }
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text("Daily SIM Caller as Phone app", modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = phoneReady,
+                                onCheckedChange = { desired ->
+                                    status = if (ManagedDefaultApps.isDeviceOwner(this@MainActivity)) {
+                                        ManagedDefaultApps.setPhone(this@MainActivity, desired)
+                                    } else if (desired) {
+                                        retryPhoneRole()
+                                        "Approve Daily SIM Caller as your Phone app in Android."
+                                    } else {
+                                        openDefaultAppSettings(home = false, guided = false)
+                                        "Choose another Phone app in Android. The switch stays ON until Android confirms the change."
+                                    }
+                                    guidedPulse++
+                                }
+                            )
+                        }
+                        Text("Switch positions reflect Android's active defaults, not saved preferences.")
                         // Admin-only operation: this still stops a running queue immediately.
                     Button(
                         enabled = CallQueue.running,
