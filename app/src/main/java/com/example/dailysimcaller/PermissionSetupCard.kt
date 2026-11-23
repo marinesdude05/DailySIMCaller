@@ -203,7 +203,10 @@ internal fun PermissionSetupCard(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             active && following != null -> TextButton(
-                                onClick = { selectedStepName = following.key.name }
+                                onClick = {
+                                    selectedStepName = following.key.name
+                                    onNext(following.key)
+                                }
                             ) {
                                 Text("Next")
                             }
