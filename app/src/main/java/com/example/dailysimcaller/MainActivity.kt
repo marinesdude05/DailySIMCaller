@@ -459,31 +459,32 @@ class MainActivity : ComponentActivity() {
                 val granted = StartupMode.isHomeApp(this@MainActivity)
                 if (granted) {
                     prefs.edit().remove("home_role_denied_v135").apply()
-                    status = "Default Home role granted. Auto-calling can run after the NEXT reboot and unlock."
+                    status = "Home app ready. Moving to the next step."
                     if (guidedAwaiting == "home") {
                         guidedAwaiting = ""
                         guidedPulse++
                     }
                 } else {
                     prefs.edit().putBoolean("home_role_denied_v135", true).apply()
-                    // Do not repeat a rejected system prompt; use Home selection settings.
-                    openDefaultAppSettings(home = true, guided = guidedAwaiting == "home")
+                    guidedAwaiting = ""
+                    guidedSetupActive = false
+                    status = "Home app is not approved yet. Tap Help Me Set Up to try the Home settings again."
                 }
             }
             val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
                 val granted = StartupMode.isDefaultPhoneApp(this@MainActivity)
                 if (granted) {
                     prefs.edit().remove("phone_role_denied_v135").apply()
-                    status = "Default Phone app role granted."
+                    status = "Phone app ready. Moving to the next step."
                     if (guidedAwaiting == "phone") {
                         guidedAwaiting = ""
                         guidedPulse++
                     }
                 } else {
                     prefs.edit().putBoolean("phone_role_denied_v135", true).apply()
-                    // Do not repeat the blocked prompt. Show this app's details so
-                    // the user can investigate device restrictions, if any.
-                    openPhoneAppInfo(guided = guidedAwaiting == "phone")
+                    guidedAwaiting = ""
+                    guidedSetupActive = false
+                    status = "Phone app is not approved yet. Tap Help Me Set Up to try again."
                 }
             }
             val permissionsLauncher = rememberLauncherForActivityResult(
@@ -581,11 +582,29 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            fun currentSetupSteps(): List<SetupPermissionStep> =
+                PermissionSetupSteps.build(
+                    phonePermissionGranted = checkSelfPermission(Manifest.permission.CALL_PHONE) ==
+                        PackageManager.PERMISSION_GRANTED,
+                    needsNotificationPermission = Build.VERSION.SDK_INT >= 33,
+                    notificationGranted = Build.VERSION.SDK_INT < 33 ||
+                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED,
+                    helperRequired = ShutdownPowerHelper.isEnabled(this@MainActivity),
+                    helperEnabled = isShutdownHelperApproved(),
+                    phoneRoleHeld = StartupMode.isDefaultPhoneApp(this@MainActivity),
+                    homeRequired = autoOnBoot,
+                    homeRoleHeld = StartupMode.isHomeApp(this@MainActivity)
+                )
+
             fun beginGuidedSetup() {
+                // The same Android-verified checklist drives both the main button
+                // and automatic advancement: no separate helper-first wizard.
+                restrictedHelperStep = 0
                 guidedAwaiting = ""
+                guidedSettingsOpenedAtResume = -1
                 guidedSetupActive = true
                 guidedPulse++
-                status = "Guided setup started. Android will ask you to approve required access."
+                status = "Continue setup: follow the next Android approval screen."
             }
 
             // First opening of v1.3.6 begins setup without searching through Settings.
@@ -604,67 +623,78 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Only run one prompt at a time, and automatically advance after acceptance.
+            // One ordered flow: Phone permission -> Notifications -> Home (if used)
+            // -> Shut Down Helper (if used) -> Phone app. Advance only on approval.
             LaunchedEffect(guidedSetupActive, guidedPulse, resumeCount) {
                 if (!guidedSetupActive || guidedAwaiting.isNotEmpty() || resumeCount == 0) return@LaunchedEffect
-                val missing = mutableListOf<String>()
-                if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED)
-                    missing.add(Manifest.permission.CALL_PHONE)
-                if (Build.VERSION.SDK_INT >= 33 &&
-                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
-                    missing.add(Manifest.permission.POST_NOTIFICATIONS)
-                if (missing.isNotEmpty()) {
-                    guidedAwaiting = "permissions"
-                    status = "Android is requesting Phone and Notifications permissions. Tap Allow to continue."
-                    permissionsLauncher.launch(missing.toTypedArray())
-                    return@LaunchedEffect
-                }
-                if (Build.VERSION.SDK_INT < 29) {
-                    guidedSetupActive = false
-                    status = "This guided Phone role setup requires Android 10 or later."
-                    return@LaunchedEffect
-                }
-                if (autoOnBoot && !StartupMode.isHomeApp(this@MainActivity)) {
-                    val role = getSystemService(RoleManager::class.java)
-                    if (prefs.getBoolean("home_role_denied_v135", false) ||
-                        !role.isRoleAvailable(RoleManager.ROLE_HOME)) {
-                        openDefaultAppSettings(home = true, guided = true)
-                    } else {
-                        guidedAwaiting = "home"
-                        status = "Choose Daily SIM Caller as the Home app for calls after reboot and unlock."
-                        homeLauncher.launch(role.createRequestRoleIntent(RoleManager.ROLE_HOME))
+                when (PermissionSetupSteps.next(currentSetupSteps())?.key) {
+                    SetupPermissionKey.PHONE_PERMISSION -> {
+                        guidedAwaiting = "permissions"
+                        status = "Allow phone calls to continue."
+                        permissionsLauncher.launch(arrayOf(Manifest.permission.CALL_PHONE))
                     }
-                    return@LaunchedEffect
-                }
-                if (autoOnBoot) prefs.edit().remove("home_role_denied_v135").apply()
-                if (ShutdownPowerHelper.isEnabled(this@MainActivity) &&
-                    !ShutdownPowerHelper.isServiceConnected()) {
-                    guidedAwaiting = "accessibility"
-                    guidedSettingsOpenedAtResume = resumeCount
-                    status = "Enable Daily SIM Caller shutdown helper in Accessibility. Android requires your approval."
-                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    return@LaunchedEffect
-                }
-                if (!StartupMode.isDefaultPhoneApp(this@MainActivity)) {
-                    val role = getSystemService(RoleManager::class.java)
-                    if (prefs.getBoolean("phone_role_denied_v135", false)) {
-                        openPhoneAppInfo(guided = true)
-                    } else if (!role.isRoleAvailable(RoleManager.ROLE_DIALER)) {
+                    SetupPermissionKey.NOTIFICATIONS -> {
+                        guidedAwaiting = "permissions"
+                        status = "Allow notifications to continue."
+                        permissionsLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+                    }
+                    SetupPermissionKey.HOME_APP -> {
+                        if (Build.VERSION.SDK_INT >= 29) {
+                            val role = getSystemService(RoleManager::class.java)
+                            if (prefs.getBoolean("home_role_denied_v135", false) ||
+                                !role.isRoleAvailable(RoleManager.ROLE_HOME)) {
+                                openDefaultAppSettings(home = true, guided = true)
+                            } else {
+                                guidedAwaiting = "home"
+                                status = "Choose Daily SIM Caller as the Home app."
+                                homeLauncher.launch(role.createRequestRoleIntent(RoleManager.ROLE_HOME))
+                            }
+                        } else {
+                            openDefaultAppSettings(home = true, guided = true)
+                        }
+                    }
+                    SetupPermissionKey.SHUTDOWN_HELPER -> {
+                        guidedAwaiting = "accessibility"
+                        guidedSettingsOpenedAtResume = resumeCount
+                        status = "In Accessibility, turn on Shut Down Helper, then return here."
+                        try {
+                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        } catch (_: ActivityNotFoundException) {
+                            guidedAwaiting = ""
+                            guidedSetupActive = false
+                            status = "Open Android Settings > Accessibility manually, then tap Help Me Set Up."
+                        } catch (_: SecurityException) {
+                            guidedAwaiting = ""
+                            guidedSetupActive = false
+                            status = "Android blocked Accessibility settings. Use Helper blocked? Fix permissions."
+                        }
+                    }
+                    SetupPermissionKey.PHONE_APP -> {
+                        if (Build.VERSION.SDK_INT >= 29) {
+                            val role = getSystemService(RoleManager::class.java)
+                            if (prefs.getBoolean("phone_role_denied_v135", false)) {
+                                openDefaultAppSettings(home = false, guided = true)
+                            } else if (!role.isRoleAvailable(RoleManager.ROLE_DIALER)) {
+                                guidedSetupActive = false
+                                status = "Android does not allow this Phone app role. Calls cannot start."
+                            } else {
+                                guidedAwaiting = "phone"
+                                status = "Choose Daily SIM Caller as the Phone app."
+                                roleLauncher.launch(role.createRequestRoleIntent(RoleManager.ROLE_DIALER))
+                            }
+                        } else {
+                            openDefaultAppSettings(home = false, guided = true)
+                        }
+                    }
+                    null -> {
+                        prefs.edit().remove("phone_role_denied_v135").apply()
+                        prefs.edit().putBoolean("guided_setup_complete_v136", true).apply()
                         guidedSetupActive = false
-                        status = "Android does not offer the default Phone role here. Calls will stay blocked."
-                    } else {
-                        guidedAwaiting = "phone"
-                        status = "Choose Daily SIM Caller as the default Phone app in Android's prompt."
-                        roleLauncher.launch(role.createRequestRoleIntent(RoleManager.ROLE_DIALER))
+                        restrictedHelperStep = 4
+                        restartMenuAutoOpened = false
+                        status = "Setup complete. Requesting a restart. No calls started."
                     }
-                    return@LaunchedEffect
                 }
-                prefs.edit().remove("phone_role_denied_v135").apply()
-                prefs.edit().putBoolean("guided_setup_complete_v136", true).apply()
-                guidedSetupActive = false
-                restrictedHelperStep = 4
-                restartMenuAutoOpened = false
-                status = "Setup complete. Requesting a restart. No calls started."
             }
 
             // Android Settings (Accessibility and Phone/Home fallback) has no simple
