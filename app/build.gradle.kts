@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 31
-        versionName = "1.3.19-next-button-fix-test"
+        versionCode = 32
+        versionName = "1.3.19-video-guided-setup-test"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
