@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 29
-        versionName = "1.3.19-home-after-notifications-test"
+        versionCode = 30
+        versionName = "1.3.19-permission-flow-fix-test"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
