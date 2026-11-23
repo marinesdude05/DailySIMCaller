@@ -167,9 +167,6 @@ internal fun PermissionSetupCard(
                 // Put helper recovery exactly above the helper's checklist row.
                 if (step.key == SetupPermissionKey.SHUTDOWN_HELPER &&
                     helperAttemptedBlocked && !step.done) {
-                if (helperAttemptedBlocked && steps.any {
-                        it.key == SetupPermissionKey.SHUTDOWN_HELPER && !it.done
-                    }) {
                     Surface(color = Color(0xFF3C3028), shape = RoundedCornerShape(10.dp)) {
                         Column(
                             modifier = Modifier.padding(12.dp),
@@ -195,7 +192,6 @@ internal fun PermissionSetupCard(
                             ) { Text("Fix helper permissions in App info") }
                         }
                     }
-                }
                 }
                 Surface(
                     modifier = Modifier.fillMaxWidth()
