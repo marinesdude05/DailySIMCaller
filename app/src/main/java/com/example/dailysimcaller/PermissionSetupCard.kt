@@ -88,6 +88,9 @@ internal object PermissionSetupSteps {
     fun next(steps: List<SetupPermissionStep>): SetupPermissionStep? =
         steps.firstOrNull { !it.done }
 
+    fun allApproved(steps: List<SetupPermissionStep>): Boolean =
+        steps.isNotEmpty() && steps.all { it.done }
+
     /** Allows staff to visit any next screen; earlier roles stay unapproved. */
     fun nextAfter(steps: List<SetupPermissionStep>, current: SetupPermissionKey): SetupPermissionStep? {
         val position = steps.indexOfFirst { it.key == current }
@@ -104,7 +107,10 @@ internal fun PermissionSetupCard(
     onHelp: () -> Unit,
     onBlockedHelper: () -> Unit,
     phoneRoleBlocked: Boolean,
-    onFixPhoneRole: () -> Unit
+    onFixPhoneRole: () -> Unit,
+    helperAttemptedBlocked: Boolean,
+    onRestartPhone: () -> Unit,
+    restartStatus: String
 ) {
     // The reference recordings show a compact, tappable checklist with green
     // confirmations and warning indicators, followed by Android's own settings.
@@ -209,6 +215,38 @@ internal fun PermissionSetupCard(
                 }
             }
 
+            // Android blocks sideloaded Accessibility services on some devices.
+            // Offer the same recovery seen in the recording, without an extra wizard.
+            if (helperAttemptedBlocked && steps.any {
+                    it.key == SetupPermissionKey.SHUTDOWN_HELPER && !it.done
+                }) {
+                Surface(color = Color(0xFF3C3028), shape = RoundedCornerShape(10.dp)) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "Shut Down Helper needs one more step",
+                            color = warning,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "Android says this helper is controlled by restricted settings. " +
+                                "Open Daily SIM Caller App info, tap the three-dot menu, " +
+                                "and choose Allow restricted settings if available. " +
+                                "Then come back and turn on Shut Down Helper in Accessibility.",
+                            color = heading,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Button(
+                            onClick = onBlockedHelper,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = action)
+                        ) { Text("Fix helper permissions in App info") }
+                    }
+                }
+            }
+
             if (phoneRoleBlocked && steps.any { it.key == SetupPermissionKey.PHONE_APP && !it.done }) {
                 Surface(color = Color(0xFF3C3028), shape = RoundedCornerShape(10.dp)) {
                     Column(
@@ -248,6 +286,24 @@ internal fun PermissionSetupCard(
             } else {
                 Text("✓ All required setup checks are approved", color = good,
                     fontWeight = FontWeight.Bold)
+                Button(
+                    onClick = onRestartPhone,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = action)
+                ) { Text("Finish setup — Restart phone") }
+                Text(
+                    "Your phone needs one restart to finish setup. " +
+                        "The app will request Restart when Android allows it.",
+                    color = muted,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                if (restartStatus.isNotBlank()) {
+                    Text(
+                        restartStatus,
+                        color = warning,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -263,9 +319,10 @@ internal fun PermissionSetupCard(
                     onHelp()
                 }) { Text("Help Me Set Up", color = heading) }
             }
-            if (current?.key == SetupPermissionKey.SHUTDOWN_HELPER) {
+            if (current?.key == SetupPermissionKey.SHUTDOWN_HELPER &&
+                !helperAttemptedBlocked) {
                 TextButton(onClick = onBlockedHelper) {
-                    Text("Helper blocked? Fix permissions", color = warning)
+                    Text("Helper blocked? Open App info", color = warning)
                 }
             }
             Text("Only Android-approved settings turn green. The Next button never grants a permission.",
