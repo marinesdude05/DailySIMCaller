@@ -60,6 +60,11 @@ internal object PermissionSetupSteps {
             "Let the phone show you when testing is running.", "Allow notifications",
             notificationGranted
         ))
+        if (homeRequired) add(SetupPermissionStep(
+            SetupPermissionKey.HOME_APP, "Home app",
+            "For calls after restart, choose Daily SIM Caller as the Home app.",
+            "Choose Home app", homeRoleHeld
+        ))
         if (helperRequired) add(SetupPermissionStep(
             SetupPermissionKey.SHUTDOWN_HELPER, "Shut Down Helper",
             "In Accessibility, choose Daily SIM Caller, then turn on Shut Down Helper.",
@@ -69,11 +74,6 @@ internal object PermissionSetupSteps {
             SetupPermissionKey.PHONE_APP, "Phone app",
             "Choose Daily SIM Caller as the phone app when Android asks.",
             "Choose Phone app", phoneRoleHeld
-        ))
-        if (homeRequired) add(SetupPermissionStep(
-            SetupPermissionKey.HOME_APP, "Home app",
-            "For calls after restart, choose Daily SIM Caller as the Home app.",
-            "Choose Home app", homeRoleHeld
         ))
     }
 }
