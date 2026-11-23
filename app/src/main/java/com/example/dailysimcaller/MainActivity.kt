@@ -23,6 +23,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -722,27 +723,49 @@ class MainActivity : ComponentActivity() {
             val valid = hasCallSource && duration != null && duration in 1..3600 &&
                     gap != null && gap in 0..3600
 
-            MaterialTheme {
+            MaterialTheme(
+                colorScheme = lightColorScheme(
+                    primary = Color(0xFF205493),
+                    onPrimary = Color.White,
+                    primaryContainer = Color(0xFFDCEBFA),
+                    onPrimaryContainer = Color(0xFF16395F),
+                    surface = Color.White,
+                    surfaceVariant = Color(0xFFEAF0F6),
+                    onSurfaceVariant = Color(0xFF45586D),
+                    background = Color(0xFFF5F8FC),
+                    onBackground = Color(0xFF172B46)
+                )
+            ) {
                 Column(
-                    Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState())
+                        .background(MaterialTheme.colorScheme.background).padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text("Daily SIM Caller", style = MaterialTheme.typography.headlineMedium)
-                    Text("Call status", style = MaterialTheme.typography.titleLarge)
-                    Text("Queue: ${CallQueue.status}")
-                    ConnectedCallTimer()
-                    Text("Completed attempts: ${CallQueue.completed}")
-                    Text(status)
+                    Text(
+                        "Daily SIM Caller",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        "Phone testing dashboard",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    SimpleCallProgressCard(
+                        finished = CallQueue.completed,
+                        total = CallQueue.total,
+                        stage = CallQueue.stage,
+                        gettingReady = retryingCalls,
+                        appMessage = status,
+                        technicalStatus = CallQueue.status
+                    )
                     OutlinedButton(
                         onClick = { SpeakerphoneControl.toggle(this@MainActivity) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(if (SpeakerphoneControl.speakerPreferred)
-                            "Speaker ON - Turn OFF" else "Speaker OFF - Turn ON")
-                    }
-                    Text("Speaker selection stays the same for every call until you change it.")
-                    if (SpeakerphoneControl.message.isNotBlank()) {
-                        Text(SpeakerphoneControl.message)
+                            "Speaker is ON for every call - Turn OFF"
+                        else "Speaker is OFF for every call - Turn ON")
                     }
                     HorizontalDivider()
                     Text("Set Up Your Phone", style = MaterialTheme.typography.titleMedium)
