@@ -181,8 +181,13 @@ internal fun SimpleCallProgressCard(
 
             if (stage == CallQueue.Stage.CONNECTED) ConnectedCallTimer()
 
-            // Settings, permission and network messages remain readable for staff.
-            if (appMessage.isNotBlank() && appMessage != "Ready") {
+            // Show urgent setup/errors immediately; keep technical chatter folded away.
+            val needsAttention = listOf(
+                "error", "failed", "missing", "denied", "blocked",
+                "could not", "unable", "grant", "permission"
+            ).any { appMessage.contains(it, ignoreCase = true) }
+            if (appMessage.isNotBlank() && appMessage != "Ready" &&
+                (needsAttention || stage == CallQueue.Stage.NEEDS_HELP)) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant
@@ -205,6 +210,13 @@ internal fun SimpleCallProgressCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (appMessage.isNotBlank() && appMessage != "Ready") {
+                    Text(
+                        "App message: $appMessage",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Text(
                     "A call counts as tried when it ends, even if nobody answers.",
                     style = MaterialTheme.typography.bodySmall,
