@@ -17,8 +17,9 @@ export default defineConfig({
     env: {
       DB: bindings.d1({ name: "daily-sim-caller-logs" }),
       SHEET_ID: bindings.text("1m93ppcPSgreho3RNRDI1QKUm5fecUazWcdDt8PRglNg"),
-      ENROLLMENT_SECRET: bindings.secret(),
-      GOOGLE_SERVICE_ACCOUNT_JSON: bindings.secret(),
+      // Secret bindings are deliberately added through Cloudflare after bootstrap.
+      // Never commit ENROLLMENT_SECRET or GOOGLE_SERVICE_ACCOUNT_JSON.
+      // Without them POST /v1/enroll rejects enrollment and no Sheets sync can run.
     },
   },
 });
