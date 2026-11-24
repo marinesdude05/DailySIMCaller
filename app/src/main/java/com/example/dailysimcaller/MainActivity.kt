@@ -1275,6 +1275,29 @@ class MainActivity : ComponentActivity() {
                             ) { Text("Allow GitHub App Updates") }
                         }
 
+                        HorizontalDivider()
+                        Text("Call history - this phone", style = MaterialTheme.typography.titleMedium)
+                        val logVersion = PerDeviceCallHistory.version
+                        val phoneHistoryId = remember { PerDeviceCallHistory.deviceId(this@MainActivity) }
+                        val recentCalls = remember(logVersion) {
+                            PerDeviceCallHistory.recent(this@MainActivity, 20)
+                        }
+                        Text("Device: " + phoneHistoryId)
+                        Text("Date and time use the phone's time zone at the time of each call.")
+                        if (recentCalls.isEmpty()) {
+                            Text("No outgoing calls recorded on this phone yet.")
+                        } else {
+                            recentCalls.forEach { entry ->
+                                Text(
+                                    entry.localDate() + " " + entry.localTime() +
+                                        " | " + entry.phoneNumber +
+                                        " | " + entry.connectedSeconds + " seconds | " + entry.outcome,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                        Text("History is stored on this device only. Shared Google Sheets tab syncing is not yet connected.")
+                        HorizontalDivider()
                         Text(if (phoneReady) "Phone app: Ready" else "Phone app: Not set")
                         OutlinedButton(onClick = { retryPhoneRole() }, modifier = Modifier.fillMaxWidth()) {
                             Text("Try Phone App Again")
