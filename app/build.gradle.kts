@@ -11,16 +11,16 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 47
-        versionName = "1.3.20-v47-local-history-preview"
+        versionCode = 48
+        versionName = "1.3.21-v48-collapsible-setup-preview"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         debug {
-            // Install alongside the existing v46 app to preserve its database.
-            applicationIdSuffix = ".localpreview"
+            // Install alongside existing versions without affecting their records.
+            applicationIdSuffix = ".layoutpreview"
         }
         release {
             optimization {

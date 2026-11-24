@@ -190,7 +190,16 @@ class MainActivity : ComponentActivity() {
             var accessibilitySettingsOpened by rememberSaveable { mutableStateOf(false) }
             var showDetails by rememberSaveable { mutableStateOf(false) }
             var showSetupShortcuts by rememberSaveable { mutableStateOf(false) }
-            // Extra operational controls are collapsed on a fresh screen.
+            // Setup remains visible until the first setup-related reboot completes.
+            // After that, the user's last expansion choice is stored locally.
+            var showPhoneSetup by rememberSaveable {
+                mutableStateOf(
+                    if (prefs.contains("setup_panel_expanded_v48"))
+                        prefs.getBoolean("setup_panel_expanded_v48", true)
+                    else !prefs.getBoolean("setup_first_reboot_seen_v48", false)
+                )
+            }
+            var showCallLogs by rememberSaveable { mutableStateOf(false) }
             var showAdminOnly by rememberSaveable { mutableStateOf(false) }
             // A user-driven guide for Android's restricted Accessibility settings.
             // An app may open Settings but cannot reveal the protected overflow menu
@@ -945,63 +954,125 @@ class MainActivity : ComponentActivity() {
                     }
                     val phoneRoleBlocked = !phoneReady &&
                         prefs.getBoolean("phone_role_denied_v135", false)
-                    PermissionSetupCard(
-                        steps = setupSteps,
-                        phoneRoleBlocked = phoneRoleBlocked,
-                        helperAttemptedBlocked = helperAttempted && !powerAccessReady,
-                        restartStatus = setupRestartStatus,
-                        onRestartPhone = {
-                            val requested = ShutdownPowerHelper.restartAfterSetup(this@MainActivity)
-                            setupRestartStatus = if (requested)
-                                "Restart requested. If the phone stays on, check the power menu."
-                            else ShutdownPowerHelper.message
-                            status = setupRestartStatus
-                        },
-                        onFixPhoneRole = {
-                            // Recording: Android blocks a sideloaded Phone role until
-                            // the user opens App info and allows restricted settings.
-                            guidedSetupActive = false
-                            guidedAwaiting = ""
-                            guidedSettingsOpenedAtResume = -1
-                            if (openPhoneAppInfo(guided = false)) {
-                                appInfoPendingKey = SetupPermissionKey.PHONE_APP.name
-                                appInfoOpenedAtResume = resumeCount
-                                appInfoReturnedKey = ""
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text("Set Up Your Phone", modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium)
+                        Switch(
+                            checked = showPhoneSetup,
+                            onCheckedChange = { expanded ->
+                                showPhoneSetup = expanded
+                                prefs.edit().putBoolean("setup_panel_expanded_v48", expanded).apply()
                             }
-                            status = "In App info, open the three-dot menu and tap Allow restricted settings if offered. Come back to use Continue to Phone app."
-                        },
-                        onNext = { key -> openSetupApproval(key) },
-                        appInfoReturnFor = SetupPermissionKey.entries.firstOrNull {
-                            it.name == appInfoReturnedKey
-                        },
-                        onContinueAfterAppInfo = { key -> openSetupApproval(key) },
-                        onCheckAgain = {
-                            guidedPulse++
-                            status = "Permissions checked. Tap a step to open its settings."
-                        },
-                        onHelp = {
-                            if (allSetupReady) {
-                                status = "All setup checks are complete. Tap Finish setup — Restart phone."
-                            } else {
-                                beginGuidedSetup()
+                        )
+                    }
+                    if (showPhoneSetup) {
+                        PermissionSetupCard(
+                            steps = setupSteps,
+                            phoneRoleBlocked = phoneRoleBlocked,
+                            helperAttemptedBlocked = helperAttempted && !powerAccessReady,
+                            restartStatus = setupRestartStatus,
+                            onRestartPhone = {
+                                val requested = ShutdownPowerHelper.restartAfterSetup(this@MainActivity)
+                                setupRestartStatus = if (requested)
+                                    "Restart requested. If the phone stays on, check the power menu."
+                                else ShutdownPowerHelper.message
+                                status = setupRestartStatus
+                            },
+                            onFixPhoneRole = {
+                                // Recording: Android blocks a sideloaded Phone role until
+                                // the user opens App info and allows restricted settings.
+                                guidedSetupActive = false
+                                guidedAwaiting = ""
+                                guidedSettingsOpenedAtResume = -1
+                                if (openPhoneAppInfo(guided = false)) {
+                                    appInfoPendingKey = SetupPermissionKey.PHONE_APP.name
+                                    appInfoOpenedAtResume = resumeCount
+                                    appInfoReturnedKey = ""
+                                }
+                                status = "In App info, open the three-dot menu and tap Allow restricted settings if offered. Come back to use Continue to Phone app."
+                            },
+                            onNext = { key -> openSetupApproval(key) },
+                            appInfoReturnFor = SetupPermissionKey.entries.firstOrNull {
+                                it.name == appInfoReturnedKey
+                            },
+                            onContinueAfterAppInfo = { key -> openSetupApproval(key) },
+                            onCheckAgain = {
+                                guidedPulse++
+                                status = "Permissions checked. Tap a step to open its settings."
+                            },
+                            onHelp = {
+                                if (allSetupReady) {
+                                    status = "All setup checks are complete. Tap Finish setup — Restart phone."
+                                } else {
+                                    beginGuidedSetup()
+                                }
+                            },
+                            onBlockedHelper = {
+                                // The video showed Android's "Controlled by Restricted
+                                // Setting" label. Go directly to App info rather than
+                                // restarting a separate multi-step wizard.
+                                guidedSetupActive = false
+                                guidedAwaiting = ""
+                                guidedSettingsOpenedAtResume = -1
+                                helperAttempted = true
+                                if (openPhoneAppInfo(guided = false)) {
+                                    appInfoPendingKey = SetupPermissionKey.SHUTDOWN_HELPER.name
+                                    appInfoOpenedAtResume = resumeCount
+                                    appInfoReturnedKey = ""
+                                }
+                                status = "In App info, tap the three-dot menu > Allow restricted settings if offered. Return here to use Continue to Shut Down Helper."
                             }
-                        },
-                        onBlockedHelper = {
-                            // The video showed Android's "Controlled by Restricted
-                            // Setting" label. Go directly to App info rather than
-                            // restarting a separate multi-step wizard.
-                            guidedSetupActive = false
-                            guidedAwaiting = ""
-                            guidedSettingsOpenedAtResume = -1
-                            helperAttempted = true
-                            if (openPhoneAppInfo(guided = false)) {
-                                appInfoPendingKey = SetupPermissionKey.SHUTDOWN_HELPER.name
-                                appInfoOpenedAtResume = resumeCount
-                                appInfoReturnedKey = ""
+                        )
+                    }
+                    // Keep the toggle immediately after phone setup.
+                    // Call data remains visible only when For Admin Only is enabled.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text("Call Logs", modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium)
+                        Switch(checked = showCallLogs, onCheckedChange = { showCallLogs = it })
+                    }
+                    if (showCallLogs) {
+                        if (!showAdminOnly) {
+                            Text("To view recent calls, enable For Admin Only below.")
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                val logVersion = PerDeviceCallHistory.version
+                                val phoneHistoryId = remember {
+                                    PerDeviceCallHistory.deviceId(this@MainActivity)
+                                }
+                                val recentCalls = remember(logVersion, resumeCount) {
+                                    PerDeviceCallHistory.recent(this@MainActivity, 20)
+                                }
+                                Text("Recent call logs — this phone",
+                                    style = MaterialTheme.typography.titleMedium)
+                                Text("Device: " + phoneHistoryId)
+                                Text("Most recent 20 outgoing calls; times are local to the phone.")
+                                if (recentCalls.isEmpty()) {
+                                    Text("No outgoing calls recorded on this phone yet.")
+                                } else {
+                                    recentCalls.forEach { entry ->
+                                        Text(
+                                            entry.localDate() + " " + entry.localTime() +
+                                                " | " + entry.phoneNumber +
+                                                " | " + entry.connectedSeconds +
+                                                " seconds | " + entry.outcome,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                                Text("Saved only on this phone. Google Sheets is not connected in this build.",
+                                    style = MaterialTheme.typography.bodySmall)
                             }
-                            status = "In App info, tap the three-dot menu > Allow restricted settings if offered. Return here to use Continue to Shut Down Helper."
                         }
-                    )
+                    }
                     TextButton(
                         onClick = { showSetupShortcuts = !showSetupShortcuts },
                         modifier = Modifier.fillMaxWidth()
@@ -1314,30 +1385,6 @@ class MainActivity : ComponentActivity() {
                                 } catch (e: Exception) { status = "Dial failed: ${e.message}" }
                             }) { Text("Call This Number") }
                         }
-                    // Recent calls remain inside the Admin Only section.
-                        HorizontalDivider()
-                        Text("Recent call logs — this phone", style = MaterialTheme.typography.titleMedium)
-                        val logVersion = PerDeviceCallHistory.version
-                        val phoneHistoryId = remember { PerDeviceCallHistory.deviceId(this@MainActivity) }
-                        val recentCalls = remember(logVersion, resumeCount) {
-                            PerDeviceCallHistory.recent(this@MainActivity, 20)
-                        }
-                        Text("Device: " + phoneHistoryId)
-                        Text("Most recent 20 outgoing calls; times are local to the phone.")
-                        if (recentCalls.isEmpty()) {
-                            Text("No outgoing calls recorded on this phone yet.")
-                        } else {
-                            recentCalls.forEach { entry ->
-                                Text(
-                                    entry.localDate() + " " + entry.localTime() +
-                                        " | " + entry.phoneNumber +
-                                        " | " + entry.connectedSeconds + " seconds | " + entry.outcome,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
-                        Text("Saved only on this phone. Google Sheets is not connected in this build.",
-                            style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
