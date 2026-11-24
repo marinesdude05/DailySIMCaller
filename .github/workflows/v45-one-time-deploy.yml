@@ -1,0 +1,50 @@
+name: One-time v45 Cloudflare relay deploy
+
+on:
+  push:
+    branches: [deploy/v45-one-time]
+    paths:
+      - '.github/workflows/v45-one-time-deploy.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-time-v45-cloudflare-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/deploy/v45-one-time'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CF_SEND_TELEMETRY: "false"
+    defaults:
+      run:
+        working-directory: sync-relay
+    steps:
+      - name: Checkout validated v45 source
+        uses: actions/checkout@v4
+        with:
+          ref: b1a03f68d09c409d4a17f302739523c72f7bf4bf
+      - name: Install Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install Cloudflare build requirements
+        run: npm install --no-audit --no-fund
+      - name: Verify relay unit tests
+        run: npm test
+      - name: Dry-run Worker build
+        run: npx cf deploy --dry-run
+      - name: Deploy Worker using GitHub encrypted secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Cloudflare GitHub Actions secrets are missing."
+            exit 1
+          fi
+          npx cf deploy --mode production
