@@ -27,7 +27,7 @@ jobs:
       - name: Checkout validated v45 source
         uses: actions/checkout@v4
         with:
-          ref: b1a03f68d09c409d4a17f302739523c72f7bf4bf
+          ref: 5d4a8e6cdcd8a28436b14059b4d9be19271faf7f
       - name: Install Node 24
         uses: actions/setup-node@v4
         with:
