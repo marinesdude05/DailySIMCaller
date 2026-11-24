@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 48
-        versionName = "1.3.21-v48-collapsible-setup-preview"
+        versionCode = 49
+        versionName = "1.3.22-v49-calendar-week-preview"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

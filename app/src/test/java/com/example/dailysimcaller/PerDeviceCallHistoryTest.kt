@@ -28,15 +28,28 @@ class PerDeviceCallHistoryTest {
         assertTrue(row.contains("\"C9-ABC12345\""))
     }
     @Test
-    fun testingWeeksFollowEachPhonesFirstRecordedCall() {
-        val start = 1_700_000_000_000L
-        val day = 86_400_000L
-        assertEquals(1, PerDeviceCallHistory.testingWeek(start, start))
-        assertEquals(1, PerDeviceCallHistory.testingWeek(start, start + 6 * day))
-        assertEquals(2, PerDeviceCallHistory.testingWeek(start, start + 7 * day))
-        assertEquals(3, PerDeviceCallHistory.testingWeek(start, start + 14 * day))
-        assertEquals(4, PerDeviceCallHistory.testingWeek(start, start + 21 * day))
-        assertEquals(1, PerDeviceCallHistory.testingWeek(start, start - day))
+    fun monthWeekLabelsFollowTheCalendarRatherThanFirstCall() {
+        val zone = java.util.TimeZone.getTimeZone("America/Chicago")
+        fun timestamp(year: Int, month: Int, day: Int): Long =
+            java.util.Calendar.getInstance(zone).apply {
+                clear()
+                set(year, month - 1, day, 12, 0, 0)
+            }.timeInMillis
+
+        assertEquals(1, PerDeviceCallHistory.calendarWeek(timestamp(2026, 11, 1), zone.id))
+        assertEquals(1, PerDeviceCallHistory.calendarWeek(timestamp(2026, 11, 7), zone.id))
+        assertEquals(2, PerDeviceCallHistory.calendarWeek(timestamp(2026, 11, 8), zone.id))
+        assertEquals(3, PerDeviceCallHistory.calendarWeek(timestamp(2026, 11, 21), zone.id))
+        assertEquals(4, PerDeviceCallHistory.calendarWeek(timestamp(2026, 11, 22), zone.id))
+        assertEquals(4, PerDeviceCallHistory.calendarWeek(timestamp(2026, 11, 24), zone.id))
+        assertEquals(4, PerDeviceCallHistory.calendarWeek(timestamp(2026, 11, 28), zone.id))
+        assertEquals(5, PerDeviceCallHistory.calendarWeek(timestamp(2026, 11, 29), zone.id))
+        assertEquals(1, PerDeviceCallHistory.calendarWeek(timestamp(2026, 12, 1), zone.id))
+        assertEquals("2026-11", PerDeviceCallHistory.monthKey(timestamp(2026, 11, 24), zone.id))
+        assertEquals("November 2026", PerDeviceCallHistory.monthLabel(timestamp(2026, 11, 24), zone.id))
+        assertEquals(30, PerDeviceCallHistory.daysInMonth("2026-11"))
+        assertEquals(5, PerDeviceCallHistory.weeksInMonth("2026-11"))
+        assertEquals(4, PerDeviceCallHistory.weeksInMonth("2027-02"))
     }
 
 }

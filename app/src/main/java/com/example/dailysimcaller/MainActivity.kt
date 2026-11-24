@@ -1044,85 +1044,115 @@ class MainActivity : ComponentActivity() {
                         val phoneHistoryId = remember {
                             PerDeviceCallHistory.deviceId(this@MainActivity)
                         }
+                        // Display the local history grouped by calendar-month weeks.
+                        // Up to 1,000 recent records are available instead of limiting
+                        // each earlier week to the newest 20 records.
                         val recentCalls = remember(logVersion, resumeCount) {
-                            PerDeviceCallHistory.recent(this@MainActivity, 20)
+                            PerDeviceCallHistory.recent(this@MainActivity, 1000)
                         }
-                        val firstCallAtMs = remember(logVersion, resumeCount) {
-                            PerDeviceCallHistory.firstCallAtMs(this@MainActivity)
+                        val expandedWeeks = remember {
+                            mutableStateMapOf<String, Boolean>()
                         }
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("Recent Calls — This Phone",
+                        val nowMs = System.currentTimeMillis()
+                        val localZone = java.util.TimeZone.getDefault().id
+                        val currentMonth = PerDeviceCallHistory.monthKey(nowMs, localZone)
+                        val currentWeek = PerDeviceCallHistory.calendarWeek(nowMs, localZone)
+                        val callsByMonth = recentCalls.groupBy { it.monthKey() }
+                        val displayedMonths = (callsByMonth.keys + currentMonth)
+                            .distinct().sortedDescending()
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("Call History — " + phoneHistoryId,
                                 style = MaterialTheme.typography.titleMedium)
-                            Text("Device: " + phoneHistoryId + "  •  Latest 20 calls",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (recentCalls.isEmpty()) {
-                                Text("No outgoing calls recorded on this phone yet.")
-                            } else {
-                                val currentWeek = PerDeviceCallHistory.testingWeek(
-                                    firstCallAtMs ?: recentCalls.last().dialedAtMs,
-                                    recentCalls.first().dialedAtMs
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer
                                 )
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                                    )
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(14.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text("CURRENT TESTING PERIOD",
-                                                style = MaterialTheme.typography.labelSmall)
-                                            Text("Week " + currentWeek,
-                                                style = MaterialTheme.typography.titleLarge)
-                                        }
-                                        Text("Since first recorded call",
-                                            style = MaterialTheme.typography.bodySmall)
-                                    }
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Text("CURRENT CALENDAR WEEK",
+                                        style = MaterialTheme.typography.labelSmall)
+                                    Text("Week " + currentWeek + " of " +
+                                        PerDeviceCallHistory.monthLabel(nowMs, localZone),
+                                        style = MaterialTheme.typography.titleLarge)
+                                    Text("Weeks use dates 1–7, 8–14, 15–21, 22–28, and 29–end.",
+                                        style = MaterialTheme.typography.bodySmall)
                                 }
-                                recentCalls.forEach { entry ->
-                                    val week = PerDeviceCallHistory.testingWeek(
-                                        firstCallAtMs ?: entry.dialedAtMs, entry.dialedAtMs
+                            }
+                            displayedMonths.forEach { month ->
+                                val monthCalls = callsByMonth[month].orEmpty()
+                                val title = if (month == currentMonth)
+                                    PerDeviceCallHistory.monthLabel(nowMs, localZone)
+                                else monthCalls.first().monthLabel()
+                                Text(title, style = MaterialTheme.typography.titleMedium)
+                                (1..PerDeviceCallHistory.weeksInMonth(month)).forEach { week ->
+                                    val weekId = month + "-week-" + week
+                                    val weekCalls = monthCalls.filter { it.weekOfMonth() == week }
+                                    // The current week starts open; each other week starts folded.
+                                    val expanded = expandedWeeks[weekId] ?:
+                                        (month == currentMonth && week == currentWeek)
+                                    val startDay = (week - 1) * 7 + 1
+                                    val endDay = minOf(
+                                        week * 7, PerDeviceCallHistory.daysInMonth(month)
                                     )
                                     Card(modifier = Modifier.fillMaxWidth()) {
-                                        Column(
-                                            modifier = Modifier.fillMaxWidth().padding(14.dp),
-                                            verticalArrangement = Arrangement.spacedBy(5.dp)
-                                        ) {
+                                        Column(modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
-                                                Text(entry.phoneNumber,
-                                                    style = MaterialTheme.typography.titleMedium)
-                                                Text("Week " + week,
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    color = MaterialTheme.colorScheme.primary)
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text("Week " + week,
+                                                        style = MaterialTheme.typography.titleMedium)
+                                                    Text("Days " + startDay + "–" + endDay +
+                                                        "  •  " + weekCalls.size + " calls",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                                Switch(
+                                                    checked = expanded,
+                                                    onCheckedChange = { expandedWeeks[weekId] = it }
+                                                )
                                             }
-                                            Text(entry.localDate() + "  •  " + entry.localTime(),
-                                                style = MaterialTheme.typography.bodySmall)
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Text("Result: " + entry.outcome,
-                                                    style = MaterialTheme.typography.bodyMedium)
-                                                Text(entry.connectedSeconds.toString() + " sec",
-                                                    style = MaterialTheme.typography.bodyMedium)
+                                            if (expanded) {
+                                                if (weekCalls.isEmpty()) {
+                                                    Text("No calls recorded for this week.")
+                                                } else {
+                                                    weekCalls.forEach { entry ->
+                                                        Surface(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            shape = MaterialTheme.shapes.medium,
+                                                            color = MaterialTheme.colorScheme.surfaceVariant
+                                                        ) {
+                                                            Column(
+                                                                modifier = Modifier.padding(12.dp),
+                                                                verticalArrangement = Arrangement.spacedBy(5.dp)
+                                                            ) {
+                                                                Text(entry.phoneNumber,
+                                                                    style = MaterialTheme.typography.titleMedium)
+                                                                Text(entry.localDate() + "  •  " + entry.localTime(),
+                                                                    style = MaterialTheme.typography.bodySmall)
+                                                                Row(
+                                                                    modifier = Modifier.fillMaxWidth(),
+                                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                                ) {
+                                                                    Text("Result: " + entry.outcome,
+                                                                        style = MaterialTheme.typography.bodyMedium)
+                                                                    Text(entry.connectedSeconds.toString() + " sec",
+                                                                        style = MaterialTheme.typography.bodyMedium)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
-                            Text("Weeks start with the first recorded outgoing call: days 1–7 are Week 1, days 8–14 are Week 2, and so on.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("History is stored only on this phone. No Google Sheets sync.",
+                            Text("Calls are stored on this phone only. Google Sheets is not connected.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }

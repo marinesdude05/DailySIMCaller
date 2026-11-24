@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Calendar
 import java.util.IdentityHashMap
 import java.util.Locale
 import java.util.TimeZone
@@ -39,6 +40,9 @@ internal object PerDeviceCallHistory {
     ) {
         fun localDate(): String = format(dialedAtMs, "yyyy-MM-dd", timeZoneId)
         fun localTime(): String = format(dialedAtMs, "HH:mm:ss", timeZoneId)
+        fun monthKey(): String = monthKey(dialedAtMs, timeZoneId)
+        fun monthLabel(): String = monthLabel(dialedAtMs, timeZoneId)
+        fun weekOfMonth(): Int = calendarWeek(dialedAtMs, timeZoneId)
     }
 
     private data class Tracked(val rowId: Long, var connectedAtElapsedMs: Long? = null)
@@ -224,18 +228,31 @@ internal object PerDeviceCallHistory {
         return output
     }
 
-    /** Earliest call in the phone's local database, including records older than the latest 20. */
-    @Synchronized
-    fun firstCallAtMs(context: Context): Long? = runCatching {
-        database(context).rawQuery("SELECT MIN(dialed_at_ms) FROM " + TABLE, null).use { cursor ->
-            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
-        }
-    }.getOrNull()
+    /** Calendar week of the month, never weeks elapsed since the first call. */
+    fun calendarWeek(epochMs: Long, timeZoneId: String): Int {
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone(timeZoneId), Locale.US)
+        calendar.timeInMillis = epochMs
+        return (calendar.get(Calendar.DAY_OF_MONTH) - 1) / 7 + 1
+    }
 
-    /** Week 1 covers the first seven 24-hour periods starting at the first call. */
-    fun testingWeek(firstCallAtMs: Long, callAtMs: Long): Int =
-        (((callAtMs - firstCallAtMs).coerceAtLeast(0L) / 604_800_000L) + 1L)
-            .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    fun monthKey(epochMs: Long, timeZoneId: String): String =
+        format(epochMs, "yyyy-MM", timeZoneId)
+
+    fun monthLabel(epochMs: Long, timeZoneId: String): String =
+        format(epochMs, "MMMM yyyy", timeZoneId)
+
+    fun daysInMonth(monthKey: String): Int {
+        require(monthKey.matches(Regex("\\d{4}-\\d{2}")))
+        val year = monthKey.substring(0, 4).toInt()
+        val monthIndex = monthKey.substring(5, 7).toInt() - 1
+        require(monthIndex in 0..11)
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"), Locale.US)
+        calendar.clear()
+        calendar.set(year, monthIndex, 1)
+        return calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+    }
+
+    fun weeksInMonth(monthKey: String): Int = (daysInMonth(monthKey) - 1) / 7 + 1
 
     /** One row = one call. The destination sheet determines per-device separation. */
     fun csvHeader(): String = "call_id,device_id,phone_number,date,time,time_zone,connected_seconds,result"
