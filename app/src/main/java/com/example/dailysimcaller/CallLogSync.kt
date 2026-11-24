@@ -6,16 +6,16 @@ import android.app.job.JobScheduler
 import android.app.job.JobService
 import android.content.ComponentName
 import android.content.Context
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-import android.util.Base64
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
+import com.google.android.gms.common.api.Scope
+import com.google.android.gms.tasks.Tasks
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.security.KeyStore
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
+import java.net.URLEncoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,194 +24,249 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Outbound call-history sync only. Never fetches the approved dialing list.
- * Encryption key remains in Android Keystore; tokens and the operator code never ship in the APK.
- * The user supplies the HTTPS relay endpoint and private enrollment code after deployment.
+ * Direct OAuth uploads from the phone to one known Google Sheets workbook.
+ * No Cloudflare relay, enrollment password, JSON key or saved access token.
  */
 internal object CallLogSync {
-    private const val PREFS = "call_log_sync"
-    private const val URL_KEY = "relay_url"
-    private const val TOKEN_KEY = "device_token_ciphertext"
-    private const val IV_KEY = "device_token_iv"
-    private const val KEY_ALIAS = "daily_sim_caller_device_sync_key"
-    private const val BACKGROUND_JOB = 45015
-    private const val IMMEDIATE_JOB = 45001
-    private const val INTERVAL_MS = 15L * 60L * 1000L
+    private const val PREFS = "google_sheets_direct_sync"
+    private const val ENABLED = "enabled"
+    private const val SHEET_ID = "1m93ppcPSgreho3RNRDI1QKUm5fecUazWcdDt8PRglNg"
+    private const val ROOT = "https://sheets.googleapis.com/v4/spreadsheets/"
+    private const val SCOPE = "https://www.googleapis.com/auth/spreadsheets"
+    private const val AFTER_CALL = 46001
+    private const val BACKGROUND = 46015
+    private const val FIFTEEN_MINUTES = 15L * 60L * 1000L
     private val lock = Mutex()
+    private val headings = listOf(
+        "call_id", "device_id", "phone_number", "date", "time",
+        "time_zone", "connected_seconds", "result"
+    )
 
-    fun endpoint(context: Context): String =
+    fun configured(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(URL_KEY, "").orEmpty()
+            .getBoolean(ENABLED, false)
 
-    fun configured(context: Context): Boolean {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        return prefs.getString(URL_KEY, "").orEmpty().isNotBlank() &&
-            prefs.getString(TOKEN_KEY, "").orEmpty().isNotBlank()
-    }
+    fun hasGooglePlayServices(context: Context): Boolean =
+        GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(context) ==
+            ConnectionResult.SUCCESS
 
-    private fun validEndpoint(value: String): String {
-        val url = URL(value.trim().trimEnd('/'))
-        val protocol = url.protocol.lowercase()
-        require(protocol == "https" && url.host.isNotBlank() &&
-            url.toURI().userInfo == null && url.query == null && url.ref == null) {
-            "Enter the HTTPS address of your deployed sync service"
+    fun authorizationRequest(): AuthorizationRequest =
+        AuthorizationRequest.builder().setRequestedScopes(listOf(Scope(SCOPE))).build()
+
+    fun disconnect(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(ENABLED, false).apply()
+        context.getSystemService(JobScheduler::class.java).apply {
+            cancel(BACKGROUND)
+            cancel(AFTER_CALL)
         }
-        return url.toExternalForm().trimEnd('/')
+        // Call history and Google's account grants are not deleted.
     }
 
-    private fun getOrMakeKey(): SecretKey {
-        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        val found = store.getKey(KEY_ALIAS, null)
-        if (found is SecretKey) return found
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
-        generator.init(KeyGenParameterSpec.Builder(KEY_ALIAS,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setRandomizedEncryptionRequired(true)
-            .build())
-        return generator.generateKey()
-    }
-
-    private fun saveCredentials(context: Context, endpoint: String, token: String) {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, getOrMakeKey())
-        val encrypted = cipher.doFinal(token.toByteArray(Charsets.UTF_8))
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        check(prefs.edit()
-            .putString(URL_KEY, validEndpoint(endpoint))
-            .putString(TOKEN_KEY, Base64.encodeToString(encrypted, Base64.NO_WRAP))
-            .putString(IV_KEY, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-            .commit()) { "Could not store encrypted enrollment credentials" }
-    }
-
-    private fun deviceToken(context: Context): String {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val stored = prefs.getString(TOKEN_KEY, null)
-            ?: error("This phone is not enrolled")
-        val iv = prefs.getString(IV_KEY, null)
-            ?: error("This phone is not enrolled")
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, getOrMakeKey(),
-            GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
-        return String(cipher.doFinal(Base64.decode(stored, Base64.NO_WRAP)), Charsets.UTF_8)
-    }
-
-    /** Must be called on Dispatchers.IO, with a newly issued operator-only code. */
-    fun enroll(context: Context, endpoint: String, enrollmentCode: String): String {
-        require(enrollmentCode.isNotBlank()) { "Enter the private enrollment code" }
-        val address = validEndpoint(endpoint)
-        val id = PerDeviceCallHistory.deviceId(context)
-        val body = JSONObject()
-            .put("device_id", id)
-            .put("enrollment_code", enrollmentCode)
-        val response = post(address + "/v1/enroll", body.toString(), null)
-        val token = response.optString("token")
-        require(token.length >= 32) { "Service did not return a valid device token" }
-        saveCredentials(context, address, token)
+    private fun enable(context: Context) {
+        check(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(ENABLED, true).commit()) {
+            "Could not save the Google Sheets connection"
+        }
         schedulePeriodic(context)
         queueImmediate(context)
-        return id
     }
 
-    private fun post(address: String, json: String, token: String?): JSONObject {
-        val connection = URL(address).openConnection() as HttpURLConnection
-        return try {
-            connection.requestMethod = "POST"
+    /** Called after the in-app Google consent flow; checks access before enabling. */
+    suspend fun verifyAndConnect(context: Context, token: String): String =
+        withContext(Dispatchers.IO) {
+            require(token.isNotBlank()) { "Google did not return an access token" }
+            val file = request("GET", ROOT + SHEET_ID +
+                "?fields=spreadsheetId,properties(title)", token)
+            check(file.optString("spreadsheetId") == SHEET_ID) {
+                "Could not verify the Daily SIM Caller call-log workbook"
+            }
+            enable(context)
+            "Google Sheets connected. " + uploadWithToken(context, token)
+        }
+
+    /** Retrieves short-lived Google credentials on demand (including background jobs). */
+    suspend fun uploadPending(context: Context): String = withContext(Dispatchers.IO) {
+        if (!configured(context)) return@withContext "Connect Google Sheets first"
+        if (!hasGooglePlayServices(context)) throw IOException(
+            "This phone needs Google Play services for Sheets sign-in")
+        val auth = try {
+            Tasks.await(Identity.getAuthorizationClient(context)
+                .authorize(authorizationRequest()))
+        } catch (error: Exception) {
+            throw IOException("Google authorization needs attention in the app", error)
+        }
+        if (auth.hasResolution()) throw IOException(
+            "Open Daily SIM Caller and reconnect Google Sheets")
+        val token = auth.accessToken
+        if (token.isNullOrBlank()) throw IOException(
+            "Google authorization expired; reconnect Sheets in the app")
+        uploadWithToken(context, token)
+    }
+
+    private suspend fun uploadWithToken(context: Context, token: String): String =
+        lock.withLock {
+            var sent = 0
+            var tab: Tab? = null
+            repeat(10) {
+                val waiting = PerDeviceCallHistory.pending(context, 50)
+                if (waiting.isEmpty()) {
+                    return@withLock if (sent == 0) "No completed calls waiting to sync"
+                        else "Synced $sent completed calls"
+                }
+                val deviceId = PerDeviceCallHistory.deviceId(context)
+                if (tab == null) tab = ensureTab(token, deviceId)
+                val neededRows = waiting.maxOf { it.id + 1 }
+                if (neededRows > 500_000L) throw IOException(
+                    "The phone has reached its sheet row limit; archive old records")
+                val current = tab!!
+                if (neededRows > current.rows) {
+                    expandTab(token, current.id, neededRows.toInt())
+                    tab = current.copy(rows = neededRows.toInt())
+                }
+                val updates = JSONArray()
+                for (item in waiting) {
+                    val rowNum = item.id + 1
+                    val columns = JSONArray().put(item.id).put(item.deviceId)
+                        .put(item.phoneNumber).put(item.localDate())
+                        .put(item.localTime()).put(item.timeZoneId)
+                        .put(item.connectedSeconds).put(item.outcome)
+                    updates.put(JSONObject()
+                        .put("range", "'$deviceId'!A" + rowNum + ":H" + rowNum)
+                        .put("majorDimension", "ROWS")
+                        .put("values", JSONArray().put(columns)))
+                }
+                val response = request("POST", ROOT + SHEET_ID + "/values:batchUpdate",
+                    token, JSONObject().put("valueInputOption", "RAW").put("data", updates))
+                if (response.optInt("totalUpdatedRows", 0) != waiting.size ||
+                    response.optJSONArray("responses")?.length() != waiting.size) {
+                    throw IOException("Google did not confirm every call row; will retry")
+                }
+                // Stable row=call_id+1 makes retries idempotent.
+                waiting.forEach { PerDeviceCallHistory.markSynced(context, it.id) }
+                sent += waiting.size
+            }
+            "Synced $sent calls; the rest will retry"
+        }
+
+    private data class Tab(val id: Int, val rows: Int)
+
+    private fun tabOf(metadata: JSONObject, deviceId: String): Tab? {
+        val sheets = metadata.optJSONArray("sheets") ?: return null
+        for (i in 0 until sheets.length()) {
+            val props = sheets.optJSONObject(i)?.optJSONObject("properties") ?: continue
+            if (props.optString("title") == deviceId) {
+                return Tab(props.getInt("sheetId"),
+                    props.optJSONObject("gridProperties")?.optInt("rowCount", 1000) ?: 1000)
+            }
+        }
+        return null
+    }
+
+    private fun sheetMetadata(token: String): JSONObject =
+        request("GET", ROOT + SHEET_ID +
+            "?fields=sheets(properties(sheetId,title,gridProperties(rowCount)))", token)
+
+    private fun ensureTab(token: String, deviceId: String): Tab {
+        require(Regex("C9-[A-F0-9]{8}").matches(deviceId))
+        var tab = tabOf(sheetMetadata(token), deviceId)
+        if (tab == null) {
+            val properties = JSONObject().put("title", deviceId)
+                .put("gridProperties", JSONObject()
+                    .put("rowCount", 1000).put("columnCount", 8))
+            val command = JSONObject().put("requests", JSONArray().put(
+                JSONObject().put("addSheet", JSONObject().put("properties", properties))))
+            try {
+                request("POST", ROOT + SHEET_ID + ":batchUpdate", token, command)
+            } catch (error: IOException) {
+                if (tabOf(sheetMetadata(token), deviceId) == null) throw error
+            }
+            tab = tabOf(sheetMetadata(token), deviceId)
+                ?: throw IOException("Google did not create this device tab")
+        }
+        // A fixed header keeps the ten existing placeholder tabs untouched.
+        request("PUT", ROOT + SHEET_ID + "/values/" +
+            URLEncoder.encode("'$deviceId'!A1:H1", "UTF-8") +
+            "?valueInputOption=RAW", token,
+            JSONObject().put("values", JSONArray().put(JSONArray(headings))))
+        return tab
+    }
+
+    private fun expandTab(token: String, sheetId: Int, rowCount: Int) {
+        val properties = JSONObject().put("sheetId", sheetId)
+            .put("gridProperties", JSONObject().put("rowCount", rowCount))
+        val command = JSONObject().put("requests", JSONArray().put(
+            JSONObject().put("updateSheetProperties", JSONObject()
+                .put("properties", properties).put("fields", "gridProperties.rowCount"))))
+        request("POST", ROOT + SHEET_ID + ":batchUpdate", token, command)
+    }
+
+    private fun request(
+        method: String, url: String, token: String, body: JSONObject? = null
+    ): JSONObject {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = method
+            connection.instanceFollowRedirects = false
             connection.connectTimeout = 15_000
             connection.readTimeout = 25_000
-            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Authorization", "Bearer $token")
             connection.setRequestProperty("Accept", "application/json")
-            if (token != null) connection.setRequestProperty("Authorization", "Bearer " + token)
-            connection.doOutput = true
-            connection.outputStream.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+            if (body != null) {
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                connection.doOutput = true
+                connection.outputStream.use {
+                    it.write(body.toString().toByteArray(Charsets.UTF_8))
+                }
+            }
             val code = connection.responseCode
             val raw = (if (code in 200..299) connection.inputStream else connection.errorStream)
                 ?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) {
-                val reason = runCatching { JSONObject(raw).optString("error") }.getOrNull()
-                error("Sync service returned HTTP " + code +
-                    (if (!reason.isNullOrBlank()) ": " + reason.take(120) else ""))
+            when (code) {
+                401 -> throw IOException("Google sign-in expired; reconnect in the app")
+                403 -> throw IOException("Google denied Sheets access; use an Editor account")
+                404 -> throw IOException("The chosen Google account cannot find this Sheet")
             }
-            JSONObject(raw)
-        } finally { connection.disconnect() }
-    }
-
-    /** Acknowledge only IDs returned by the server after a confirmed Sheets write. */
-    suspend fun uploadPending(context: Context): String = lock.withLock {
-        if (!configured(context)) return@withLock "Cloud sync is not enrolled"
-        val id = PerDeviceCallHistory.deviceId(context)
-        var synced = 0
-        val address = validEndpoint(endpoint(context))
-        val token = deviceToken(context)
-        repeat(10) {
-            val pending = PerDeviceCallHistory.pending(context, 60)
-            if (pending.isEmpty()) {
-                return@withLock if (synced > 0) "Synced " + synced + " calls" else "No calls waiting to sync"
-            }
-            val rows = JSONArray()
-            for (entry in pending) {
-                rows.put(JSONObject()
-                    .put("call_id", entry.id)
-                    .put("phone_number", entry.phoneNumber)
-                    .put("date", entry.localDate())
-                    .put("time", entry.localTime())
-                    .put("time_zone", entry.timeZoneId)
-                    .put("connected_seconds", entry.connectedSeconds)
-                    .put("result", entry.outcome))
-            }
-            val body = JSONObject().put("device_id", id).put("calls", rows)
-            val response = post(address + "/v1/calls", body.toString(), token)
-            val ids = response.optJSONArray("synced_call_ids")
-                ?: error("Sync service did not confirm call IDs")
-            val pendingIds = pending.map { it.id }.toSet()
-            var batchSynced = 0
-            for (i in 0 until ids.length()) {
-                val accepted = ids.optLong(i, -1L)
-                if (accepted in pendingIds) {
-                    PerDeviceCallHistory.markSynced(context, accepted)
-                    batchSynced++
-                }
-            }
-            synced += batchSynced
-            if (batchSynced == 0) error("Sync service has not confirmed any pending records")
+            if (code !in 200..299) throw IOException("Google Sheets returned HTTP $code")
+            return if (raw.isBlank()) JSONObject() else JSONObject(raw)
+        } finally {
+            connection.disconnect()
         }
-        "Synced " + synced + " calls; remaining calls will retry"
     }
 
     fun queueImmediate(context: Context) {
         if (!configured(context)) return
-        val job = JobInfo.Builder(IMMEDIATE_JOB, ComponentName(context, CallLogSyncJob::class.java))
-            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-            .setBackoffCriteria(30_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
-            .build()
-        context.getSystemService(JobScheduler::class.java).schedule(job)
+        context.getSystemService(JobScheduler::class.java).schedule(
+            JobInfo.Builder(AFTER_CALL, ComponentName(context, CallLogSyncJob::class.java))
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setBackoffCriteria(30_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
+                .build())
     }
 
     fun schedulePeriodic(context: Context) {
         if (!configured(context)) return
-        val job = JobInfo.Builder(BACKGROUND_JOB, ComponentName(context, CallLogSyncJob::class.java))
-            .setPeriodic(INTERVAL_MS)
-            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-            .setPersisted(true)
-            .build()
-        context.getSystemService(JobScheduler::class.java).schedule(job)
+        context.getSystemService(JobScheduler::class.java).schedule(
+            JobInfo.Builder(BACKGROUND, ComponentName(context, CallLogSyncJob::class.java))
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setPeriodic(FIFTEEN_MINUTES)
+                .setPersisted(true)
+                .build())
     }
 }
 
-/** Android may defer background jobs during Doze/battery restrictions. */
+/** Does not open the Google account picker when the phone is locked/asleep. */
 class CallLogSyncJob : JobService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var active: Job? = null
-
     override fun onStartJob(params: JobParameters): Boolean {
         if (!CallLogSync.configured(this)) return false
         active = scope.launch {
-            val success = try {
+            val worked = try {
                 CallLogSync.uploadPending(this@CallLogSyncJob)
                 true
             } catch (_: CancellationException) {
@@ -219,16 +274,14 @@ class CallLogSyncJob : JobService() {
             } catch (_: Exception) {
                 false
             }
-            jobFinished(params, !success)
+            jobFinished(params, !worked)
         }
         return true
     }
-
     override fun onStopJob(params: JobParameters): Boolean {
         active?.cancel()
         return true
     }
-
     override fun onDestroy() {
         active?.cancel()
         super.onDestroy()
