@@ -12,6 +12,7 @@ class BootReceiver : BroadcastReceiver() {
         // A visible, unlocked Home activity handles the queue, never this receiver.
         StartupMode.armAfterBoot(context)
         if (BootPreparation.isEnabled(context)) BootPreparation.schedule(context)
+        CallLogSync.clearPreviousVersionSync(context)
         CallLogSync.schedulePeriodic(context)
         CallLogSync.queueImmediate(context)
         // Older releases may have left a 10 AM reminder pending.

@@ -30,7 +30,7 @@ import org.json.JSONObject
 
 /**
  * Direct OAuth uploads from the phone to one known Google Sheets workbook.
- * No Cloudflare relay, enrollment password, JSON key or saved access token.
+ * No intermediary upload server, enrollment password, JSON key or saved token.
  */
 internal object CallLogSync {
     private const val PREFS = "google_sheets_direct_sync"
@@ -57,6 +57,25 @@ internal object CallLogSync {
 
     fun authorizationRequest(): AuthorizationRequest =
         AuthorizationRequest.builder().setRequestedScopes(listOf(Scope(SCOPE))).build()
+
+    /**
+     * v45 relay jobs persist across APK upgrades. Remove them and old local
+     * enrollment credentials without touching the per-device call-history DB.
+     */
+    fun clearPreviousVersionSync(context: Context) {
+        context.getSystemService(JobScheduler::class.java).apply {
+            cancel(45001)
+            cancel(45015)
+        }
+        val previousPrefs = context.getSharedPreferences("call_log_sync", Context.MODE_PRIVATE)
+        if (previousPrefs.all.isNotEmpty()) previousPrefs.edit().clear().apply()
+        runCatching {
+            val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
+            keyStore.load(null)
+            val previousKey = "daily_sim_caller_device_sync_key"
+            if (keyStore.containsAlias(previousKey)) keyStore.deleteEntry(previousKey)
+        }
+    }
 
     fun disconnect(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

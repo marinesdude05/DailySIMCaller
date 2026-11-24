@@ -28,23 +28,12 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Set up Node for relay tests
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-      - name: Verify secure sync relay tests
-        run: node --test sync-relay/test/*.test.mjs
-      - name: Check Cloudflare relay deploy configuration (offline)
-        run: |
-          cd sync-relay
-          npm install --no-audit --no-fund
-          npx cf deploy --dry-run
       - name: Test and assemble debug APK
         run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
       - name: Upload debug APK for internal verification
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: daily-sim-caller-android-ci-test-apk
+          name: daily-sim-caller-v46-direct-sheets-preview-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

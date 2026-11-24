@@ -238,6 +238,7 @@ class MainActivity : ComponentActivity() {
         // Disable any 10 AM alarm left by an older installed version.
         // This cleanup never changes the independently opted-in reboot call setting.
         DailyAlarm.clearLegacyReminder(this)
+        CallLogSync.clearPreviousVersionSync(this)
         CallLogSync.schedulePeriodic(this)
         cloudSyncStatus = if (CallLogSync.configured(this))
             "Google Sheets linked. Automatic sync is enabled."
