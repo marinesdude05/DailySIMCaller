@@ -57,7 +57,7 @@ internal object CallLogSync {
         val url = URL(value.trim().trimEnd('/'))
         val protocol = url.protocol.lowercase()
         require(protocol == "https" && url.host.isNotBlank() &&
-            url.userInfo == null && url.query == null && url.ref == null) {
+            url.toURI().userInfo == null && url.query == null && url.ref == null) {
             "Enter the HTTPS address of your deployed sync service"
         }
         return url.toExternalForm().trimEnd('/')
