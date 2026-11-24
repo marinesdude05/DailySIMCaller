@@ -9,6 +9,8 @@
     "dryrun": "cf deploy --dry-run"
   },
   "devDependencies": {
-    "cf": "^1.0.0-rc.1"
+    "cf": "^1.0.0-rc.1",
+    "@cloudflare/vite-plugin": "rc",
+    "vite": "latest"
   }
 }
