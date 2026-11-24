@@ -1,0 +1,45 @@
+name: Package Approved v49 Android Studio Project
+
+on:
+  push:
+    branches:
+      - release/v49-android-studio-source
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-android-studio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the unmodified approved milestone
+        uses: actions/checkout@v4
+        with:
+          ref: milestone/v49-calendar-week-call-logs-approved
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact approved milestone and package Android Studio project
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "e7d4c200856b901a870a3d1dd948d06d6ddb7053"
+          test -f settings.gradle.kts
+          test -f app/build.gradle.kts
+          test -f gradlew
+          test -f gradle/wrapper/gradle-wrapper.jar
+          mkdir -p packaged
+          git archive --format=zip --prefix=DailySIMCaller-v49-AndroidStudio/ HEAD > packaged/DailySIMCaller-v49-AndroidStudio.zip
+          unzip -t packaged/DailySIMCaller-v49-AndroidStudio.zip
+          sha256sum packaged/DailySIMCaller-v49-AndroidStudio.zip > packaged/DailySIMCaller-v49-AndroidStudio.zip.sha256
+
+      - name: Upload Android Studio source package
+        uses: actions/upload-artifact@v4
+        with:
+          name: DailySIMCaller-v49-AndroidStudio-source
+          path: |
+            packaged/DailySIMCaller-v49-AndroidStudio.zip
+            packaged/DailySIMCaller-v49-AndroidStudio.zip.sha256
+          if-no-files-found: error
