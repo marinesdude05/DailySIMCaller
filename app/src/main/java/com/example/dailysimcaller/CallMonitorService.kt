@@ -38,6 +38,7 @@ class CallMonitorService : InCallService() {
         super.onCallAdded(call)
         PhoneCallUi.active = call
         ConnectedCallClock.onCallAdded(call)
+        PerDeviceCallHistory.onCallAdded(this, call)
         CallQueue.onCallAdded(call)
         // Reapply the owner's saved speaker preference on EVERY new call.
         // Do not reset an OFF selection when the previous call ends.
@@ -59,6 +60,7 @@ class CallMonitorService : InCallService() {
         val watcher = object : Call.Callback() {
             override fun onStateChanged(call: Call, state: Int) {
                 ConnectedCallClock.onStateChanged(call, state)
+                PerDeviceCallHistory.onCallState(this@CallMonitorService, call, state)
                 tryAutoSpeaker()
             }
         }
@@ -70,6 +72,7 @@ class CallMonitorService : InCallService() {
 
     override fun onCallRemoved(call: Call) {
         ConnectedCallClock.onCallRemoved(call)
+        PerDeviceCallHistory.onCallRemoved(this, call)
         CallQueue.onCallRemoved(call)
         if (PhoneCallUi.active === call) PhoneCallUi.active = null
         if (monitoredCall === call) {
