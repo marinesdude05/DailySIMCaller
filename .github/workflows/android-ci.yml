@@ -31,9 +31,14 @@ jobs:
       - name: Set up Node for relay tests
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
       - name: Verify secure sync relay tests
         run: node --test sync-relay/test/*.test.mjs
+      - name: Check Cloudflare relay deploy configuration (offline)
+        run: |
+          cd sync-relay
+          npm install --no-audit --no-fund
+          npx cf deploy --dry-run
       - name: Test and assemble debug APK
         run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
       - name: Upload debug APK for internal verification
