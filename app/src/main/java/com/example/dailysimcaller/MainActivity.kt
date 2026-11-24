@@ -517,22 +517,10 @@ class MainActivity : ComponentActivity() {
             }
 
             fun requestHomeRole() {
-                if (StartupMode.isHomeApp(this@MainActivity)) {
-                    prefs.edit().remove("home_role_denied_v135").apply()
-                    status = "Already the default Home app"
-                    return
-                }
-                if (Build.VERSION.SDK_INT >= 29) {
-                    val manager = getSystemService(RoleManager::class.java)
-                    if (prefs.getBoolean("home_role_denied_v135", false) ||
-                        !manager.isRoleAvailable(RoleManager.ROLE_HOME)) {
-                        openDefaultAppSettings(home = true, guided = false)
-                        return
-                    }
-                    homeLauncher.launch(manager.createRequestRoleIntent(RoleManager.ROLE_HOME))
-                    status = "Choose Daily SIM Caller as the default Home app"
-                    return
-                }
+                // Match Shut Down Helper's one-tap shortcut: open Android's
+                // Home app settings directly, without a separate role prompt.
+                // Android still requires the user to select/approve the Home app.
+                // Opening this screen also allows switching away when already set.
                 openDefaultAppSettings(home = true, guided = false)
             }
 
