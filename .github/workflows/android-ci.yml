@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   push:
-    branches: [main, 'build/v1.3.19-updated-buttons-api36', 'feature/v1.3.19-managed-default-app-switches', 'feature/v1.3.19-v40-auto-restart-100-percent', 'feature/v1.3.19-v41-power-menu-diagnostics', 'feature/v1.3.19-v42-setup-first-launch-repair', 'feature/v43-random-two-github-updater', 'feature/v44-per-device-call-history', 'feature/v45-secure-call-log-sync']
+    branches: [main, 'build/v1.3.19-updated-buttons-api36', 'feature/v1.3.19-managed-default-app-switches', 'feature/v1.3.19-v40-auto-restart-100-percent', 'feature/v1.3.19-v41-power-menu-diagnostics', 'feature/v1.3.19-v42-setup-first-launch-repair', 'feature/v43-random-two-github-updater', 'feature/v44-per-device-call-history', 'feature/v45-secure-call-log-sync', 'feature/v46-direct-google-sheets']
   pull_request:
 
 permissions:
@@ -45,6 +45,6 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: daily-sim-caller-v45-cloud-sync-preview-test-apk
+          name: daily-sim-caller-android-ci-test-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
