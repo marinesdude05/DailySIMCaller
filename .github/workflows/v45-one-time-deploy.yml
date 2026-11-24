@@ -48,3 +48,20 @@ jobs:
             exit 1
           fi
           npx cf deploy --mode production
+      - name: Initialize D1 call-log schema and verify public health
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -eu
+          base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database"
+          list=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base?name=daily-sim-caller-logs")
+          dbid=$(printf '%s' "$list" | jq -r '.result[] | select(.name == "daily-sim-caller-logs") | .uuid' | head -n 1)
+          test -n "$dbid" || { echo "D1 database was not found after deploy"; exit 1; }
+          echo "Found provisioned D1 database."
+          jq -n --rawfile sql ./schema.sql '{sql: $sql}' > "$RUNNER_TEMP/d1-schema-request.json"
+          reply=$(curl -fsS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" --data-binary @"$RUNNER_TEMP/d1-schema-request.json" "$base/$dbid/query")
+          printf '%s' "$reply" | jq -e '.success == true and (all(.result[]; .success == true))' > /dev/null || { echo "Cloudflare D1 schema setup failed"; exit 1; }
+          echo "D1 call-log schema verified."
+          curl -fsS --max-time 15 https://daily-sim-caller-sync.nmaxwellhbk.workers.dev/health | jq -e '.service == "daily-sim-caller-sync" and .status == "running"' > /dev/null
+          echo "Worker health endpoint verified. Authentication and Sheets credentials still need configuration."
