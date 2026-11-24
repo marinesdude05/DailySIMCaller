@@ -1029,7 +1029,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     // Keep the toggle immediately after phone setup.
-                    // Call data remains visible only when For Admin Only is enabled.
+                    // Call logs remain visible independently of the Admin Only setting.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -1040,37 +1040,91 @@ class MainActivity : ComponentActivity() {
                         Switch(checked = showCallLogs, onCheckedChange = { showCallLogs = it })
                     }
                     if (showCallLogs) {
-                        if (!showAdminOnly) {
-                            Text("To view recent calls, enable For Admin Only below.")
-                        } else {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                val logVersion = PerDeviceCallHistory.version
-                                val phoneHistoryId = remember {
-                                    PerDeviceCallHistory.deviceId(this@MainActivity)
-                                }
-                                val recentCalls = remember(logVersion, resumeCount) {
-                                    PerDeviceCallHistory.recent(this@MainActivity, 20)
-                                }
-                                Text("Recent call logs — this phone",
-                                    style = MaterialTheme.typography.titleMedium)
-                                Text("Device: " + phoneHistoryId)
-                                Text("Most recent 20 outgoing calls; times are local to the phone.")
-                                if (recentCalls.isEmpty()) {
-                                    Text("No outgoing calls recorded on this phone yet.")
-                                } else {
-                                    recentCalls.forEach { entry ->
-                                        Text(
-                                            entry.localDate() + " " + entry.localTime() +
-                                                " | " + entry.phoneNumber +
-                                                " | " + entry.connectedSeconds +
-                                                " seconds | " + entry.outcome,
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
+                        val logVersion = PerDeviceCallHistory.version
+                        val phoneHistoryId = remember {
+                            PerDeviceCallHistory.deviceId(this@MainActivity)
+                        }
+                        val recentCalls = remember(logVersion, resumeCount) {
+                            PerDeviceCallHistory.recent(this@MainActivity, 20)
+                        }
+                        val firstCallAtMs = remember(logVersion, resumeCount) {
+                            PerDeviceCallHistory.firstCallAtMs(this@MainActivity)
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("Recent Calls — This Phone",
+                                style = MaterialTheme.typography.titleMedium)
+                            Text("Device: " + phoneHistoryId + "  •  Latest 20 calls",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (recentCalls.isEmpty()) {
+                                Text("No outgoing calls recorded on this phone yet.")
+                            } else {
+                                val currentWeek = PerDeviceCallHistory.testingWeek(
+                                    firstCallAtMs ?: recentCalls.last().dialedAtMs,
+                                    recentCalls.first().dialedAtMs
+                                )
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text("CURRENT TESTING PERIOD",
+                                                style = MaterialTheme.typography.labelSmall)
+                                            Text("Week " + currentWeek,
+                                                style = MaterialTheme.typography.titleLarge)
+                                        }
+                                        Text("Since first recorded call",
+                                            style = MaterialTheme.typography.bodySmall)
                                     }
                                 }
-                                Text("Saved only on this phone. Google Sheets is not connected in this build.",
-                                    style = MaterialTheme.typography.bodySmall)
+                                recentCalls.forEach { entry ->
+                                    val week = PerDeviceCallHistory.testingWeek(
+                                        firstCallAtMs ?: entry.dialedAtMs, entry.dialedAtMs
+                                    )
+                                    Card(modifier = Modifier.fillMaxWidth()) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(entry.phoneNumber,
+                                                    style = MaterialTheme.typography.titleMedium)
+                                                Text("Week " + week,
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    color = MaterialTheme.colorScheme.primary)
+                                            }
+                                            Text(entry.localDate() + "  •  " + entry.localTime(),
+                                                style = MaterialTheme.typography.bodySmall)
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text("Result: " + entry.outcome,
+                                                    style = MaterialTheme.typography.bodyMedium)
+                                                Text(entry.connectedSeconds.toString() + " sec",
+                                                    style = MaterialTheme.typography.bodyMedium)
+                                            }
+                                        }
+                                    }
+                                }
                             }
+                            Text("Weeks start with the first recorded outgoing call: days 1–7 are Week 1, days 8–14 are Week 2, and so on.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("History is stored only on this phone. No Google Sheets sync.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     TextButton(

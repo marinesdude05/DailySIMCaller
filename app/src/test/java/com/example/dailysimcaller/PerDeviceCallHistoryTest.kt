@@ -27,4 +27,16 @@ class PerDeviceCallHistoryTest {
         assertTrue(row.contains("\"57\""))
         assertTrue(row.contains("\"C9-ABC12345\""))
     }
+    @Test
+    fun testingWeeksFollowEachPhonesFirstRecordedCall() {
+        val start = 1_700_000_000_000L
+        val day = 86_400_000L
+        assertEquals(1, PerDeviceCallHistory.testingWeek(start, start))
+        assertEquals(1, PerDeviceCallHistory.testingWeek(start, start + 6 * day))
+        assertEquals(2, PerDeviceCallHistory.testingWeek(start, start + 7 * day))
+        assertEquals(3, PerDeviceCallHistory.testingWeek(start, start + 14 * day))
+        assertEquals(4, PerDeviceCallHistory.testingWeek(start, start + 21 * day))
+        assertEquals(1, PerDeviceCallHistory.testingWeek(start, start - day))
+    }
+
 }

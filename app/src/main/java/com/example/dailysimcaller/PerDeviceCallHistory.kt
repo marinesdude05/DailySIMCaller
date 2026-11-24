@@ -224,6 +224,19 @@ internal object PerDeviceCallHistory {
         return output
     }
 
+    /** Earliest call in the phone's local database, including records older than the latest 20. */
+    @Synchronized
+    fun firstCallAtMs(context: Context): Long? = runCatching {
+        database(context).rawQuery("SELECT MIN(dialed_at_ms) FROM " + TABLE, null).use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
+        }
+    }.getOrNull()
+
+    /** Week 1 covers the first seven 24-hour periods starting at the first call. */
+    fun testingWeek(firstCallAtMs: Long, callAtMs: Long): Int =
+        (((callAtMs - firstCallAtMs).coerceAtLeast(0L) / 604_800_000L) + 1L)
+            .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+
     /** One row = one call. The destination sheet determines per-device separation. */
     fun csvHeader(): String = "call_id,device_id,phone_number,date,time,time_zone,connected_seconds,result"
 
