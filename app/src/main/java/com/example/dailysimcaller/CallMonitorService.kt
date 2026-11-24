@@ -73,7 +73,6 @@ class CallMonitorService : InCallService() {
     override fun onCallRemoved(call: Call) {
         ConnectedCallClock.onCallRemoved(call)
         PerDeviceCallHistory.onCallRemoved(this, call)
-        CallLogSync.queueImmediate(this)
         CallQueue.onCallRemoved(call)
         if (PhoneCallUi.active === call) PhoneCallUi.active = null
         if (monitoredCall === call) {

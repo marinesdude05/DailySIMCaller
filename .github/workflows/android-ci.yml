@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   push:
-    branches: [main, 'build/v1.3.19-updated-buttons-api36', 'feature/v1.3.19-managed-default-app-switches', 'feature/v1.3.19-v40-auto-restart-100-percent', 'feature/v1.3.19-v41-power-menu-diagnostics', 'feature/v1.3.19-v42-setup-first-launch-repair', 'feature/v43-random-two-github-updater', 'feature/v44-per-device-call-history', 'feature/v45-secure-call-log-sync', 'feature/v46-direct-google-sheets']
+    branches: [main, 'build/v1.3.19-updated-buttons-api36', 'feature/v1.3.19-managed-default-app-switches', 'feature/v1.3.19-v40-auto-restart-100-percent', 'feature/v1.3.19-v41-power-menu-diagnostics', 'feature/v1.3.19-v42-setup-first-launch-repair', 'feature/v43-random-two-github-updater', 'feature/v44-per-device-call-history', 'feature/v45-secure-call-log-sync', 'feature/v46-direct-google-sheets', 'feature/v47-local-history-no-sheets']
   pull_request:
 
 permissions:
@@ -28,7 +28,7 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Verify v46 contains no legacy Cloudflare sync
+      - name: Verify local-history build contains no legacy Cloudflare sync
         run: |
           test ! -e sync-relay
           test ! -e .github/workflows/deploy-v45-relay.yml
@@ -42,6 +42,6 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: daily-sim-caller-v46-direct-sheets-preview-apk
+          name: daily-sim-caller-v47-local-history-preview-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

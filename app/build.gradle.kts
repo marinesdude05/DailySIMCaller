@@ -11,13 +11,17 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 46
-        versionName = "1.3.19-v46-direct-sheets-preview"
+        versionCode = 47
+        versionName = "1.3.20-v47-local-history-preview"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
+        debug {
+            // Install alongside the existing v46 app to preserve its database.
+            applicationIdSuffix = ".localpreview"
+        }
         release {
             optimization {
                 enable = false
@@ -42,7 +46,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
-    implementation(libs.play.services.auth)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

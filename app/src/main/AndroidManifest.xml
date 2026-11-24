@@ -122,11 +122,6 @@
             android:foregroundServiceType="phoneCall" />
 
         <service
-            android:name=".CallLogSyncJob"
-            android:permission="android.permission.BIND_JOB_SERVICE"
-            android:exported="true" />
-
-        <service
             android:name=".BootPreparationService"
             android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="true" />

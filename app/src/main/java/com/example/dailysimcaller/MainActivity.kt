@@ -1,7 +1,6 @@
 package com.example.dailysimcaller
 
 import android.Manifest
-import android.app.Activity
 import android.app.KeyguardManager
 import android.view.WindowManager
 import android.app.role.RoleManager
@@ -21,10 +20,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.result.IntentSenderRequest
-import com.google.android.gms.auth.api.identity.Identity
-import com.google.android.gms.auth.api.identity.RevokeAccessRequest
-import com.google.android.gms.common.api.Scope
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -50,99 +45,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
-    private var cloudSyncStatus by mutableStateOf("Google Sheets not connected")
-    private var cloudSyncBusy by mutableStateOf(false)
-
-    private val googleSheetsConsent = registerForActivityResult(
-        ActivityResultContracts.StartIntentSenderForResult()
-    ) { result ->
-        if (result.resultCode != Activity.RESULT_OK || result.data == null) {
-            cloudSyncStatus = "Google Sheets permission was not granted"
-            cloudSyncBusy = false
-        } else {
-            try {
-                val auth = Identity.getAuthorizationClient(this)
-                    .getAuthorizationResultFromIntent(result.data!!)
-                completeGoogleSheetsConnect(auth.accessToken)
-            } catch (error: Exception) {
-                cloudSyncStatus = "Google Sheets permission failed: " +
-                    (error.message ?: "Try again")
-                cloudSyncBusy = false
-            }
-        }
-    }
-
-    private fun completeGoogleSheetsConnect(token: String?) {
-        if (token.isNullOrBlank()) {
-            cloudSyncStatus = "Google did not grant Sheets access"
-            cloudSyncBusy = false
-            return
-        }
-        lifecycleScope.launch {
-            try {
-                cloudSyncStatus = withContext(Dispatchers.IO) {
-                    CallLogSync.verifyAndConnect(this@MainActivity, token)
-                }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                cloudSyncStatus = if (CallLogSync.configured(this@MainActivity))
-                    "Google Sheets linked; upload retry pending: " +
-                        (error.message ?: "Network error")
-                else "Could not link Google Sheets: " +
-                        (error.message ?: "Check account access")
-            } finally {
-                cloudSyncBusy = false
-            }
-        }
-    }
-
-    private fun connectGoogleSheets() {
-        if (cloudSyncBusy) return
-        if (!CallLogSync.hasGooglePlayServices(this)) {
-            cloudSyncStatus = "Google Play services is unavailable on this phone"
-            return
-        }
-        cloudSyncBusy = true
-        cloudSyncStatus = "Opening Google account permission..."
-        Identity.getAuthorizationClient(this)
-            .authorize(CallLogSync.authorizationRequest())
-            .addOnSuccessListener { auth ->
-                try {
-                    if (auth.hasResolution()) {
-                        val pendingIntent = auth.pendingIntent
-                            ?: error("Google did not return a sign-in window")
-                        googleSheetsConsent.launch(
-                            IntentSenderRequest.Builder(pendingIntent.intentSender).build()
-                        )
-                    } else completeGoogleSheetsConnect(auth.accessToken)
-                } catch (error: Exception) {
-                    cloudSyncBusy = false
-                    cloudSyncStatus = "Could not open Google Sheets sign-in: " +
-                        (error.message ?: "Unknown error")
-                }
-            }
-            .addOnFailureListener { error ->
-                cloudSyncBusy = false
-                cloudSyncStatus = "Google sign-in unavailable: " +
-                    (error.message ?: "Try later")
-            }
-    }
-
-    private fun disconnectGoogleSheets() {
-        cloudSyncBusy = true
-        CallLogSync.disconnect(this)
-        Identity.getAuthorizationClient(this).revokeAccess(
-            RevokeAccessRequest.builder()
-                .setScopes(listOf(Scope("https://www.googleapis.com/auth/spreadsheets")))
-                .build()
-        ).addOnCompleteListener { result ->
-            cloudSyncBusy = false
-            cloudSyncStatus = if (result.isSuccessful)
-                "Google Sheets disconnected. Local call history preserved."
-            else "Uploads stopped. Google permission may need revocation in account settings."
-        }
-    }
     // The fleet's phones have no PIN/pattern/password. Never try to bypass a secure lock.
     private fun prepareUnsecuredHomeScreen() {
         val keyguard = getSystemService(KeyguardManager::class.java)
@@ -238,11 +140,15 @@ class MainActivity : ComponentActivity() {
         // Disable any 10 AM alarm left by an older installed version.
         // This cleanup never changes the independently opted-in reboot call setting.
         DailyAlarm.clearLegacyReminder(this)
-        CallLogSync.clearPreviousVersionSync(this)
-        CallLogSync.schedulePeriodic(this)
-        cloudSyncStatus = if (CallLogSync.configured(this))
-            "Google Sheets linked. Automatic sync is enabled."
-        else "Google Sheets not connected"
+        // This local-history-only build never uploads call records to Google.
+        // Cancel only this package's scheduled v46 sync jobs (if present);
+        // preserve the per-device call-history database.
+        getSystemService(android.app.job.JobScheduler::class.java).apply {
+            cancel(46001)
+            cancel(46015)
+        }
+        getSharedPreferences("google_sheets_direct_sync", MODE_PRIVATE)
+            .edit().putBoolean("enabled", false).apply()
         // One shared HTTPS CSV endpoint is embedded during the build, not entered per phone.
         val remoteCsvUrl = getString(R.string.csv_endpoint).trim()
         val initialDial = intent?.data?.takeIf { it.scheme == "tel" }?.schemeSpecificPart.orEmpty()
@@ -262,28 +168,7 @@ class MainActivity : ComponentActivity() {
             var csvRevision by remember { mutableStateOf(prefs.getString("last_csv_revision", "None").orEmpty()) }
             var isSyncing by remember { mutableStateOf(false) }
             val scope = rememberCoroutineScope()
-            // Google account approval is handled by the Activity, not a Compose popup.
 
-            // Refresh after app resume and every five minutes while the Activity is visible.
-            // Android may defer scheduled background sync while asleep.
-            LaunchedEffect(resumeCount) {
-                if (resumeCount > 0 && CallLogSync.configured(this@MainActivity)) {
-                    while (isVisible) {
-                        try {
-                            val message = withContext(Dispatchers.IO) {
-                                CallLogSync.uploadPending(this@MainActivity)
-                            }
-                            cloudSyncStatus = message
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            cloudSyncStatus = "Upload retry pending: " +
-                                (e.message ?: "Network or service unavailable")
-                        }
-                        delay(5L * 60L * 1000L)
-                    }
-                }
-            }
             var powerOffAfterQueue by remember {
                 mutableStateOf(ShutdownPowerHelper.isEnabled(this@MainActivity))
             }
@@ -1117,20 +1002,6 @@ class MainActivity : ComponentActivity() {
                             status = "In App info, tap the three-dot menu > Allow restricted settings if offered. Return here to use Continue to Shut Down Helper."
                         }
                     )
-                    HorizontalDivider()
-                    Text("Google Sheets call logs", style = MaterialTheme.typography.titleMedium)
-                    Text(if (CallLogSync.configured(this@MainActivity))
-                        "Linked to the shared Daily SIM Caller workbook"
-                    else "Connect once inside the app. No server URL or enrollment code.")
-                    Button(
-                        enabled = !cloudSyncBusy,
-                        onClick = { connectGoogleSheets() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(if (CallLogSync.configured(this@MainActivity))
-                            "Reconnect Google Sheets" else "Connect Google Sheets")
-                    }
-                    Text(cloudSyncStatus, style = MaterialTheme.typography.bodySmall)
                     TextButton(
                         onClick = { showSetupShortcuts = !showSetupShortcuts },
                         modifier = Modifier.fillMaxWidth()
@@ -1417,61 +1288,6 @@ class MainActivity : ComponentActivity() {
 
 
                         HorizontalDivider()
-                        Text("Google Sheets call-log sync", style = MaterialTheme.typography.titleMedium)
-                        Text("Google account approval is inside the app. Completed calls upload automatically when Android allows network access.")
-                        OutlinedButton(
-                            enabled = !cloudSyncBusy && CallLogSync.configured(this@MainActivity),
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                cloudSyncBusy = true
-                                cloudSyncStatus = "Uploading completed calls..."
-                                scope.launch {
-                                    try {
-                                        cloudSyncStatus = withContext(Dispatchers.IO) {
-                                            CallLogSync.uploadPending(this@MainActivity)
-                                        }
-                                    } catch (error: CancellationException) {
-                                        throw error
-                                    } catch (error: Exception) {
-                                        cloudSyncStatus = "Upload retry pending: " +
-                                            (error.message ?: "Network unavailable")
-                                    } finally { cloudSyncBusy = false }
-                                }
-                            }
-                        ) { Text("Sync Call Logs Now") }
-                        OutlinedButton(
-                            enabled = !cloudSyncBusy && CallLogSync.configured(this@MainActivity),
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = { disconnectGoogleSheets() }
-                        ) { Text("Disconnect Google Sheets") }
-                        Text("Pending completed calls: " +
-                            PerDeviceCallHistory.pendingCount(this@MainActivity))
-                        Text("Android may delay scheduled background sync while a phone is sleeping.")
-                        HorizontalDivider()
-                        Text("Call history - this phone", style = MaterialTheme.typography.titleMedium)
-                        val logVersion = PerDeviceCallHistory.version
-                        val phoneHistoryId = remember { PerDeviceCallHistory.deviceId(this@MainActivity) }
-                        val recentCalls = remember(logVersion) {
-                            PerDeviceCallHistory.recent(this@MainActivity, 20)
-                        }
-                        Text("Device: " + phoneHistoryId)
-                        Text("Date and time use the phone's time zone at the time of each call.")
-                        if (recentCalls.isEmpty()) {
-                            Text("No outgoing calls recorded on this phone yet.")
-                        } else {
-                            recentCalls.forEach { entry ->
-                                Text(
-                                    entry.localDate() + " " + entry.localTime() +
-                                        " | " + entry.phoneNumber +
-                                        " | " + entry.connectedSeconds + " seconds | " + entry.outcome,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
-                        Text(if (CallLogSync.configured(this@MainActivity))
-                            "Call history remains on this phone until Google confirms each row in Sheets."
-                        else "Call history remains stored locally until Google Sheets is connected.")
-                        HorizontalDivider()
                         Text(if (phoneReady) "Phone app: Ready" else "Phone app: Not set")
                         OutlinedButton(onClick = { retryPhoneRole() }, modifier = Modifier.fillMaxWidth()) {
                             Text("Try Phone App Again")
@@ -1499,6 +1315,30 @@ class MainActivity : ComponentActivity() {
                             }) { Text("Call This Number") }
                         }
                     }
+                    // Visible below Admin tools without opening the admin switch.
+                    HorizontalDivider()
+                    Text("Recent call logs — this phone", style = MaterialTheme.typography.titleMedium)
+                    val logVersion = PerDeviceCallHistory.version
+                    val phoneHistoryId = remember { PerDeviceCallHistory.deviceId(this@MainActivity) }
+                    val recentCalls = remember(logVersion, resumeCount) {
+                        PerDeviceCallHistory.recent(this@MainActivity, 20)
+                    }
+                    Text("Device: " + phoneHistoryId)
+                    Text("Most recent 20 outgoing calls; times are local to the phone.")
+                    if (recentCalls.isEmpty()) {
+                        Text("No outgoing calls recorded on this phone yet.")
+                    } else {
+                        recentCalls.forEach { entry ->
+                            Text(
+                                entry.localDate() + " " + entry.localTime() +
+                                    " | " + entry.phoneNumber +
+                                    " | " + entry.connectedSeconds + " seconds | " + entry.outcome,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                    Text("Saved only on this phone. Google Sheets is not connected in this build.",
+                        style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
