@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 43
-        versionName = "1.3.19-random-two-github-updater-test"
+        versionCode = 44
+        versionName = "1.3.19-per-device-call-history-test"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
