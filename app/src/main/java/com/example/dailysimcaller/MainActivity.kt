@@ -146,7 +146,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             var numbers by rememberSaveable { mutableStateOf(prefs.getString("numbers", "").orEmpty()) }
             var csvUri by rememberSaveable { mutableStateOf(prefs.getString("csv_uri", "").orEmpty()) }
-            var seconds by rememberSaveable { mutableStateOf(prefs.getInt("call_seconds", 45).toString()) }
+            var seconds by rememberSaveable { mutableStateOf(prefs.getInt("call_seconds", RandomCallPolicy.DEFAULT_MAX_CALL_SECONDS).toString()) }
             var pause by rememberSaveable { mutableStateOf(prefs.getInt("pause_seconds", 10).toString()) }
             var manualDial by rememberSaveable { mutableStateOf(initialDial) }
             var status by remember { mutableStateOf("Ready") }
@@ -243,8 +243,8 @@ class MainActivity : ComponentActivity() {
                     val started = CallQueue.start(this@MainActivity, fresh, callDuration, callPause)
                     if (!started) stopService(Intent(this@MainActivity, CallSessionService::class.java))
                     status = if (started) {
-                        if (boot) "Startup: dialing ${fresh.size} permitted numbers after unlock"
-                        else "Starting ${fresh.size} user-requested queued calls"
+                        if (boot) "Startup: dialing two randomly selected permitted numbers after unlock"
+                        else "Starting two randomly selected calls"
                     } else "Queue could not start. Check the default phone role."
                     started
                 } catch (e: CancellationException) {
@@ -377,9 +377,9 @@ class MainActivity : ComponentActivity() {
                             bootReport("Startup skipped: no authorized CSV source configured")
                         }
                         else -> {
-                            val duration = prefs.getInt("call_seconds", 45)
+                            val duration = prefs.getInt("call_seconds", RandomCallPolicy.DEFAULT_MAX_CALL_SECONDS)
                             val pauseTime = prefs.getInt("pause_seconds", 10)
-                            if (duration !in 1..3600 || pauseTime !in 0..3600) {
+                            if (duration !in RandomCallPolicy.MIN_CALL_SECONDS..3600 || pauseTime !in 0..3600) {
                                 StartupMode.clearPending(this@MainActivity)
                                 bootReport("Startup skipped: invalid call duration or pause")
                             } else {
@@ -797,7 +797,7 @@ class MainActivity : ComponentActivity() {
             fun persistSettings() {
                 prefs.edit()
                     .putString("numbers", numbers)
-                    .putInt("call_seconds", seconds.toIntOrNull() ?: 45)
+                    .putInt("call_seconds", seconds.toIntOrNull() ?: RandomCallPolicy.DEFAULT_MAX_CALL_SECONDS)
                     .putInt("pause_seconds", pause.toIntOrNull() ?: 10)
                     .apply()
             }
@@ -808,7 +808,7 @@ class MainActivity : ComponentActivity() {
             // Allow Call Now to begin a network retry even on a fresh install
             // where the first CSV download failed and no cached numbers exist.
             val hasCallSource = remoteCsvUrl.isNotBlank() || csvUri.isNotBlank() || list.isNotEmpty()
-            val valid = hasCallSource && duration != null && duration in 1..3600 &&
+            val valid = hasCallSource && duration != null && duration in RandomCallPolicy.MIN_CALL_SECONDS..3600 &&
                     gap != null && gap in 0..3600
 
             MaterialTheme(
@@ -1214,7 +1214,8 @@ class MainActivity : ComponentActivity() {
                         OutlinedTextField(
                             value = seconds,
                             onValueChange = { seconds = it },
-                            label = { Text("Call length (seconds)") },
+                            label = { Text("Random call maximum (seconds)") },
+                            supportingText = { Text("Two random numbers per cycle; each connected call lasts 46 seconds through this maximum.") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true, modifier = Modifier.fillMaxWidth()
                         )
