@@ -20,7 +20,7 @@ android {
     buildTypes {
         debug {
             // Install alongside existing versions without affecting their records.
-            applicationIdSuffix = ".layoutpreview"
+            applicationIdSuffix = ".weekpreview"
         }
         release {
             optimization {
