@@ -150,6 +150,10 @@ class MainActivity : ComponentActivity() {
             var pause by rememberSaveable { mutableStateOf(prefs.getInt("pause_seconds", 10).toString()) }
             var manualDial by rememberSaveable { mutableStateOf(initialDial) }
             var status by remember { mutableStateOf("Ready") }
+            var githubUpdateStatus by remember {
+                mutableStateOf(getSharedPreferences("github_updater", MODE_PRIVATE)
+                    .getString(GitHubUpdater.STATUS_PREF, "GitHub updates not checked yet").orEmpty())
+            }
             var lastRefresh by remember { mutableStateOf(prefs.getString("last_csv_refresh", "Not refreshed yet").orEmpty()) }
             var csvRevision by remember { mutableStateOf(prefs.getString("last_csv_revision", "None").orEmpty()) }
             var isSyncing by remember { mutableStateOf(false) }
@@ -389,6 +393,14 @@ class MainActivity : ComponentActivity() {
                     }
                 } else if (!retryingCalls && (remoteCsvUrl.isNotBlank() || csvUri.isNotBlank())) {
                     refreshCsv()
+                }
+            }
+
+            // Foreground-only automatic update check, rate limited to once per 12 hours.
+            // Never download or install while a test call queue is active.
+            LaunchedEffect(resumeCount) {
+                if (resumeCount > 0 && isVisible && !CallQueue.running && !retryingCalls) {
+                    githubUpdateStatus = GitHubUpdater.checkAndInstall(this@MainActivity)
                 }
             }
 
@@ -1228,6 +1240,29 @@ class MainActivity : ComponentActivity() {
                         )
                         Button(onClick = { persistSettings(); status = "Settings saved" },
                             modifier = Modifier.fillMaxWidth()) { Text("Save Settings") }
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    githubUpdateStatus = GitHubUpdater.checkAndInstall(
+                                        this@MainActivity, force = true
+                                    )
+                                }
+                            },
+                            enabled = !CallQueue.running && !retryingCalls,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Check for GitHub App Update") }
+                        Text(githubUpdateStatus)
+                        if (githubUpdateStatus.contains("install unknown apps", ignoreCase = true)) {
+                            OutlinedButton(
+                                onClick = {
+                                    startActivity(Intent(
+                                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                        Uri.parse("package:" + packageName)
+                                    ))
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Allow GitHub App Updates") }
+                        }
 
                         Text(if (phoneReady) "Phone app: Ready" else "Phone app: Not set")
                         OutlinedButton(onClick = { retryPhoneRole() }, modifier = Modifier.fillMaxWidth()) {
