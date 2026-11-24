@@ -404,6 +404,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            // Also check twice daily if this stays open as the device's Home app
+            // without ever receiving another onResume event.
+            LaunchedEffect(Unit) {
+                while (true) {
+                    delay(12L * 60L * 60L * 1000L)
+                    if (isVisible && !CallQueue.running && !retryingCalls) {
+                        githubUpdateStatus = GitHubUpdater.checkAndInstall(this@MainActivity)
+                    }
+                }
+            }
+
             val csvPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
                 if (uri != null && remoteCsvUrl.isBlank()) {
                     try {
