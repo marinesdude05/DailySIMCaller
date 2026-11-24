@@ -1314,32 +1314,32 @@ class MainActivity : ComponentActivity() {
                                 } catch (e: Exception) { status = "Dial failed: ${e.message}" }
                             }) { Text("Call This Number") }
                         }
+                    // Recent calls remain inside the Admin Only section.
+                        HorizontalDivider()
+                        Text("Recent call logs — this phone", style = MaterialTheme.typography.titleMedium)
+                        val logVersion = PerDeviceCallHistory.version
+                        val phoneHistoryId = remember { PerDeviceCallHistory.deviceId(this@MainActivity) }
+                        val recentCalls = remember(logVersion, resumeCount) {
+                            PerDeviceCallHistory.recent(this@MainActivity, 20)
+                        }
+                        Text("Device: " + phoneHistoryId)
+                        Text("Most recent 20 outgoing calls; times are local to the phone.")
+                        if (recentCalls.isEmpty()) {
+                            Text("No outgoing calls recorded on this phone yet.")
+                        } else {
+                            recentCalls.forEach { entry ->
+                                Text(
+                                    entry.localDate() + " " + entry.localTime() +
+                                        " | " + entry.phoneNumber +
+                                        " | " + entry.connectedSeconds + " seconds | " + entry.outcome,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                        Text("Saved only on this phone. Google Sheets is not connected in this build.",
+                            style = MaterialTheme.typography.bodySmall)
                     }
                 }
-                // Visible below Admin tools without opening the admin switch.
-                    HorizontalDivider()
-                    Text("Recent call logs — this phone", style = MaterialTheme.typography.titleMedium)
-                    val logVersion = PerDeviceCallHistory.version
-                    val phoneHistoryId = remember { PerDeviceCallHistory.deviceId(this@MainActivity) }
-                    val recentCalls = remember(logVersion, resumeCount) {
-                        PerDeviceCallHistory.recent(this@MainActivity, 20)
-                    }
-                    Text("Device: " + phoneHistoryId)
-                    Text("Most recent 20 outgoing calls; times are local to the phone.")
-                    if (recentCalls.isEmpty()) {
-                        Text("No outgoing calls recorded on this phone yet.")
-                    } else {
-                        recentCalls.forEach { entry ->
-                            Text(
-                                entry.localDate() + " " + entry.localTime() +
-                                    " | " + entry.phoneNumber +
-                                    " | " + entry.connectedSeconds + " seconds | " + entry.outcome,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                    Text("Saved only on this phone. Google Sheets is not connected in this build.",
-                        style = MaterialTheme.typography.bodySmall)
             }
         }
     }
