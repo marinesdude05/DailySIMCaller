@@ -17,6 +17,7 @@ export function validateCall(row) {
     typeof row.date === "string" && DATE.test(row.date) &&
     typeof row.time === "string" && TIME.test(row.time) &&
     typeof row.time_zone === "string" && TIME_ZONE.test(row.time_zone) &&
+    !row.time_zone.includes("..") &&
     Number.isSafeInteger(row.connected_seconds) &&
     row.connected_seconds >= 0 && row.connected_seconds <= 86_400 &&
     RESULTS.has(row.result);
