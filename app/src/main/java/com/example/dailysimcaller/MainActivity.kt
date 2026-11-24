@@ -1315,7 +1315,8 @@ class MainActivity : ComponentActivity() {
                             }) { Text("Call This Number") }
                         }
                     }
-                    // Visible below Admin tools without opening the admin switch.
+                }
+                // Visible below Admin tools without opening the admin switch.
                     HorizontalDivider()
                     Text("Recent call logs — this phone", style = MaterialTheme.typography.titleMedium)
                     val logVersion = PerDeviceCallHistory.version
@@ -1339,7 +1340,6 @@ class MainActivity : ComponentActivity() {
                     }
                     Text("Saved only on this phone. Google Sheets is not connected in this build.",
                         style = MaterialTheme.typography.bodySmall)
-                }
             }
         }
     }
