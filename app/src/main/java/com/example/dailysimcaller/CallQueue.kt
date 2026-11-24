@@ -46,7 +46,8 @@ object CallQueue {
     private var callback: Call.Callback? = null
     private var waitingForCall = false
 
-    private var callSeconds = 45
+    private var maxCallSeconds = RandomCallPolicy.DEFAULT_MAX_CALL_SECONDS
+    private var activeCallSeconds = RandomCallPolicy.MIN_CALL_SECONDS
     private var pauseSeconds = 10
 
     private var timer: Runnable? = null
@@ -60,14 +61,14 @@ object CallQueue {
     fun start(
         context: Context,
         numbers: List<String>,
-        seconds: Int = 45,
+        seconds: Int = RandomCallPolicy.DEFAULT_MAX_CALL_SECONDS,
         pause: Int = 10
     ): Boolean {
 
         if (
             running ||
-            numbers.isEmpty() ||
-            seconds !in 1..3600 ||
+            numbers.distinct().size < RandomCallPolicy.NUMBERS_PER_RUN ||
+            seconds !in RandomCallPolicy.MIN_CALL_SECONDS..3600 ||
             pause !in 0..3600
         ) {
             return false
@@ -91,13 +92,13 @@ object CallQueue {
         application = context.applicationContext
         cancelledPendingNumber = null
 
-        phoneNumbers = numbers.distinct()
+        phoneNumbers = RandomCallPolicy.selectNumbers(numbers)
 
         position = 0
         total = phoneNumbers.size
         completed = 0
         stage = Stage.CALLING
-        callSeconds = seconds
+        maxCallSeconds = seconds
         pauseSeconds = pause
         running = true
         ShutdownPowerHelper.queueStarted()
@@ -281,6 +282,7 @@ object CallQueue {
         }
 
         startedTimer = true
+        activeCallSeconds = RandomCallPolicy.durationSeconds(maxCallSeconds)
         stage = Stage.CONNECTED
 
         connectTimeout?.let {
@@ -289,7 +291,7 @@ object CallQueue {
 
         connectTimeout = null
 
-        status = "Connected: ending after $callSeconds seconds " +
+        status = "Connected: ending after $activeCallSeconds seconds " +
                 "(${position + 1}/${phoneNumbers.size})"
 
         val end = Runnable {
@@ -300,7 +302,7 @@ object CallQueue {
                 call.state == Call.STATE_ACTIVE
             ) {
 
-                status = "$callSeconds-second target reached; " +
+                status = "$activeCallSeconds-second target reached; " +
                         "disconnect requested"
 
                 call.disconnect()
@@ -311,7 +313,7 @@ object CallQueue {
 
         handler.postDelayed(
             end,
-            callSeconds * 1000L
+            activeCallSeconds * 1000L
         )
     }
 
