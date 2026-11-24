@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 44
-        versionName = "1.3.19-per-device-call-history-test"
+        versionCode = 45
+        versionName = "1.3.19-v45-sync-preview"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

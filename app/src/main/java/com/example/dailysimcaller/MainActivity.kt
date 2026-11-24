@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -139,6 +140,7 @@ class MainActivity : ComponentActivity() {
         // Disable any 10 AM alarm left by an older installed version.
         // This cleanup never changes the independently opted-in reboot call setting.
         DailyAlarm.clearLegacyReminder(this)
+        CallLogSync.schedulePeriodic(this)
         // One shared HTTPS CSV endpoint is embedded during the build, not entered per phone.
         val remoteCsvUrl = getString(R.string.csv_endpoint).trim()
         val initialDial = intent?.data?.takeIf { it.scheme == "tel" }?.schemeSpecificPart.orEmpty()
@@ -158,6 +160,37 @@ class MainActivity : ComponentActivity() {
             var csvRevision by remember { mutableStateOf(prefs.getString("last_csv_revision", "None").orEmpty()) }
             var isSyncing by remember { mutableStateOf(false) }
             val scope = rememberCoroutineScope()
+            var relayUrlInput by rememberSaveable {
+                mutableStateOf(CallLogSync.endpoint(this@MainActivity))
+            }
+            var relayCode by remember { mutableStateOf("") }
+            var cloudSyncStatus by remember {
+                mutableStateOf(if (CallLogSync.configured(this@MainActivity))
+                    "Device enrolled. Waiting for verified upload."
+                else "Cloud call-log upload not connected")
+            }
+            var cloudSyncBusy by remember { mutableStateOf(false) }
+
+            // Refresh after app resume and every five minutes while the Activity is visible.
+            // Android may defer scheduled background sync while asleep.
+            LaunchedEffect(resumeCount) {
+                if (resumeCount > 0 && CallLogSync.configured(this@MainActivity)) {
+                    while (isVisible) {
+                        try {
+                            val message = withContext(Dispatchers.IO) {
+                                CallLogSync.uploadPending(this@MainActivity)
+                            }
+                            cloudSyncStatus = message
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            cloudSyncStatus = "Upload retry pending: " +
+                                (e.message ?: "Network or service unavailable")
+                        }
+                        delay(5L * 60L * 1000L)
+                    }
+                }
+            }
             var powerOffAfterQueue by remember {
                 mutableStateOf(ShutdownPowerHelper.isEnabled(this@MainActivity))
             }
@@ -1276,6 +1309,72 @@ class MainActivity : ComponentActivity() {
                         }
 
                         HorizontalDivider()
+                        Text("Google Sheets call-log sync", style = MaterialTheme.typography.titleMedium)
+                        Text("Enter the HTTPS address of the deployed upload service and enroll this phone once.")
+                        OutlinedTextField(
+                            value = relayUrlInput,
+                            onValueChange = { relayUrlInput = it },
+                            label = { Text("Sync service HTTPS URL") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = relayCode,
+                            onValueChange = { relayCode = it },
+                            label = { Text("Private enrollment code") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Button(
+                            enabled = !cloudSyncBusy && relayUrlInput.isNotBlank() &&
+                                relayCode.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                cloudSyncBusy = true
+                                cloudSyncStatus = "Enrolling this phone..."
+                                scope.launch {
+                                    try {
+                                        val id = withContext(Dispatchers.IO) {
+                                            CallLogSync.enroll(this@MainActivity, relayUrlInput, relayCode)
+                                        }
+                                        relayCode = ""
+                                        cloudSyncStatus = "Enrolled " + id +
+                                            ". Upload queued; verify a row in Google Sheets."
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        cloudSyncStatus = "Enrollment failed: " +
+                                            (e.message ?: "Unknown error")
+                                    } finally { cloudSyncBusy = false }
+                                }
+                            }
+                        ) { Text("Enroll & Connect Phone") }
+                        OutlinedButton(
+                            enabled = !cloudSyncBusy && CallLogSync.configured(this@MainActivity),
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                cloudSyncBusy = true
+                                cloudSyncStatus = "Uploading completed calls..."
+                                scope.launch {
+                                    try {
+                                        cloudSyncStatus = withContext(Dispatchers.IO) {
+                                            CallLogSync.uploadPending(this@MainActivity)
+                                        }
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        cloudSyncStatus = "Upload retry pending: " +
+                                            (e.message ?: "Network or service unavailable")
+                                    } finally { cloudSyncBusy = false }
+                                }
+                            }
+                        ) { Text("Sync Call Logs Now") }
+                        Text("Upload status: " + cloudSyncStatus)
+                        Text("Pending completed calls: " +
+                            PerDeviceCallHistory.pendingCount(this@MainActivity))
+                        Text("Background upload attempts follow Android's scheduling rules; five-minute checks are only targeted while the app is visible.")
+                        HorizontalDivider()
                         Text("Call history - this phone", style = MaterialTheme.typography.titleMedium)
                         val logVersion = PerDeviceCallHistory.version
                         val phoneHistoryId = remember { PerDeviceCallHistory.deviceId(this@MainActivity) }
@@ -1296,7 +1395,9 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
-                        Text("History is stored on this device only. Shared Google Sheets tab syncing is not yet connected.")
+                        Text(if (CallLogSync.configured(this@MainActivity))
+                            "Call history stays on this phone until the relay confirms each row is in Google Sheets."
+                        else "Call history is stored locally until secure cloud upload is enrolled.")
                         HorizontalDivider()
                         Text(if (phoneReady) "Phone app: Ready" else "Phone app: Not set")
                         OutlinedButton(onClick = { retryPhoneRole() }, modifier = Modifier.fillMaxWidth()) {

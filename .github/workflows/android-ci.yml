@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   push:
-    branches: [main, 'build/v1.3.19-updated-buttons-api36', 'feature/v1.3.19-managed-default-app-switches', 'feature/v1.3.19-v40-auto-restart-100-percent', 'feature/v1.3.19-v41-power-menu-diagnostics', 'feature/v1.3.19-v42-setup-first-launch-repair', 'feature/v43-random-two-github-updater', 'feature/v44-per-device-call-history']
+    branches: [main, 'build/v1.3.19-updated-buttons-api36', 'feature/v1.3.19-managed-default-app-switches', 'feature/v1.3.19-v40-auto-restart-100-percent', 'feature/v1.3.19-v41-power-menu-diagnostics', 'feature/v1.3.19-v42-setup-first-launch-repair', 'feature/v43-random-two-github-updater', 'feature/v44-per-device-call-history', 'feature/v45-secure-call-log-sync']
   pull_request:
 
 permissions:
@@ -28,12 +28,23 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+      - name: Set up Node for relay tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Verify secure sync relay tests
+        run: node --test sync-relay/test/*.test.mjs
+      - name: Check Cloudflare relay deploy configuration (offline)
+        run: |
+          cd sync-relay
+          npm install --no-audit --no-fund
+          npx cf deploy --dry-run
       - name: Test and assemble debug APK
         run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
       - name: Upload debug APK for internal verification
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: daily-sim-caller-v44-per-device-call-history-test-apk
+          name: daily-sim-caller-v45-cloud-sync-preview-test-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

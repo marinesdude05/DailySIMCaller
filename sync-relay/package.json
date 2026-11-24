@@ -1,0 +1,16 @@
+{
+  "name": "daily-sim-caller-sync-relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "build": "cf build",
+    "dryrun": "cf deploy --dry-run"
+  },
+  "devDependencies": {
+    "cf": "^1.0.0-rc.1",
+    "@cloudflare/vite-plugin": "rc",
+    "vite": "latest"
+  }
+}

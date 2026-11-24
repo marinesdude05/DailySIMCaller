@@ -44,7 +44,7 @@ internal object PerDeviceCallHistory {
     private data class Tracked(val rowId: Long, var connectedAtElapsedMs: Long? = null)
 
     private class HistoryDb(context: Context) :
-        SQLiteOpenHelper(context, "per_device_call_history.db", null, 1) {
+        SQLiteOpenHelper(context, "per_device_call_history.db", null, 2) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
                 "CREATE TABLE " + TABLE + " (" +
@@ -55,11 +55,15 @@ internal object PerDeviceCallHistory {
                     "time_zone_id TEXT NOT NULL," +
                     "connected_at_ms INTEGER," +
                     "connected_seconds INTEGER NOT NULL DEFAULT 0," +
-                    "outcome TEXT NOT NULL DEFAULT 'Dialing')"
+                    "outcome TEXT NOT NULL DEFAULT 'Dialing'," +
+                    "synced INTEGER NOT NULL DEFAULT 0)"
             )
         }
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-            // Deliberately do not drop historical records during app upgrades.
+            // Preserve locally recorded calls when enabling cloud sync.
+            if (oldVersion < 2) {
+                db.execSQL("ALTER TABLE " + TABLE + " ADD COLUMN synced INTEGER NOT NULL DEFAULT 0")
+            }
         }
     }
 
@@ -144,6 +148,54 @@ internal object PerDeviceCallHistory {
             database(context).update(TABLE, values, "id=?", arrayOf(record.rowId.toString()))
             version++
         }
+    }
+
+
+    /** Only completed calls are eligible. Unfinished dial attempts never go to cloud. */
+    @Synchronized
+    fun pending(context: Context, limit: Int = 60): List<Entry> {
+        val result = mutableListOf<Entry>()
+        database(context).query(
+            TABLE,
+            arrayOf("id", "device_id", "phone_number", "dialed_at_ms",
+                "time_zone_id", "connected_seconds", "outcome"),
+            "synced=0 AND outcome IN ('Ended', 'Not connected')",
+            null, null, null, "id ASC", limit.coerceIn(1, 100).toString()
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                result += Entry(
+                    id = cursor.getLong(0),
+                    deviceId = cursor.getString(1),
+                    phoneNumber = cursor.getString(2),
+                    dialedAtMs = cursor.getLong(3),
+                    timeZoneId = cursor.getString(4),
+                    connectedSeconds = cursor.getLong(5),
+                    outcome = cursor.getString(6)
+                )
+            }
+        }
+        return result
+    }
+
+    @Synchronized
+    fun pendingCount(context: Context): Int {
+        database(context).rawQuery(
+            "SELECT COUNT(*) FROM " + TABLE +
+                " WHERE synced=0 AND outcome IN ('Ended', 'Not connected')", null
+        ).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        }
+    }
+
+    @Synchronized
+    fun markSynced(context: Context, callId: Long) {
+        val values = ContentValues().apply { put("synced", 1) }
+        val changed = database(context).update(
+            TABLE, values,
+            "id=? AND synced=0 AND outcome IN ('Ended', 'Not connected')",
+            arrayOf(callId.toString())
+        )
+        if (changed > 0) version++
     }
 
     @Synchronized
