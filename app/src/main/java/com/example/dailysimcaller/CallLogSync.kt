@@ -121,9 +121,7 @@ internal object CallLogSync {
                 }
                 val deviceId = PerDeviceCallHistory.deviceId(context)
                 if (tab == null) tab = ensureTab(token, deviceId)
-                val neededRows = waiting.maxOf { it.id + 1 }
-                if (neededRows > 500_000L) throw IOException(
-                    "The phone has reached its sheet row limit; archive old records")
+                val neededRows = waiting.maxOf { SheetRowMapping.rowNumber(it.id) }
                 val current = tab!!
                 if (neededRows > current.rows) {
                     expandTab(token, current.id, neededRows.toInt())
@@ -131,13 +129,13 @@ internal object CallLogSync {
                 }
                 val updates = JSONArray()
                 for (item in waiting) {
-                    val rowNum = item.id + 1
+                    val rowNum = SheetRowMapping.rowNumber(item.id)
                     val columns = JSONArray().put(item.id).put(item.deviceId)
                         .put(item.phoneNumber).put(item.localDate())
                         .put(item.localTime()).put(item.timeZoneId)
                         .put(item.connectedSeconds).put(item.outcome)
                     updates.put(JSONObject()
-                        .put("range", "'$deviceId'!A" + rowNum + ":H" + rowNum)
+                        .put("range", SheetRowMapping.callRange(deviceId, item.id))
                         .put("majorDimension", "ROWS")
                         .put("values", JSONArray().put(columns)))
                 }
@@ -173,7 +171,7 @@ internal object CallLogSync {
             "?fields=sheets(properties(sheetId,title,gridProperties(rowCount)))", token)
 
     private fun ensureTab(token: String, deviceId: String): Tab {
-        require(Regex("C9-[A-F0-9]{8}").matches(deviceId))
+        SheetRowMapping.deviceTab(deviceId)
         var tab = tabOf(sheetMetadata(token), deviceId)
         if (tab == null) {
             val properties = JSONObject().put("title", deviceId)
