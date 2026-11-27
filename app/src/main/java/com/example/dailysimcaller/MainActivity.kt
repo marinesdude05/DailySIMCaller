@@ -45,6 +45,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
+    private val deviceRegistration = DeviceRegistration(this)
+
     // The fleet's phones have no PIN/pattern/password. Never try to bypass a secure lock.
     private fun prepareUnsecuredHomeScreen() {
         val keyguard = getSystemService(KeyguardManager::class.java)
@@ -133,6 +135,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        deviceRegistration.initialize()
         // Keep the app display on while this Activity is foreground, not system-wide.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         prepareUnsecuredHomeScreen()
@@ -1028,7 +1031,22 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-                    // Keep the toggle immediately after phone setup.
+                    // Optional enrollment; only an anonymous installation ID is reported.
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Device registration (optional)", style = MaterialTheme.typography.titleMedium)
+                            Text("Register this authorized test installation in the management dashboard. Sends only a random app ID, time and app version; no phone numbers, call history, contacts or location.", style = MaterialTheme.typography.bodySmall)
+                            Text(deviceRegistration.status, style = MaterialTheme.typography.bodySmall)
+                            if (!deviceRegistration.registered) {
+                                Button(onClick = { deviceRegistration.requestRegistration() },
+                                    enabled = !deviceRegistration.busy && deviceRegistration.configured) {
+                                    Text("Consent and register device")
+                                }
+                            }
+                        }
+                    }
+                    // Keep the call logs toggle immediately after device setup and registration.
                     // Call logs remain visible independently of the Admin Only setting.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
