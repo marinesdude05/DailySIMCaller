@@ -704,7 +704,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // First opening of v1.3.6 begins setup without searching through Settings.
+            // First opening of V51 begins setup without searching through Settings.
             // Rejected permissions are never requested in a loop. The owner explicitly retries.
             LaunchedEffect(Unit) {
                 if (BootPreparation.isEnabled(this@MainActivity)) {
@@ -713,18 +713,20 @@ class MainActivity : ComponentActivity() {
                 }
                 // Previous installations can preserve "setup started" even when
                 // Android has reset all approvals after Android Studio reinstallation.
-                // Prompt ONCE on the first v42 launch when checks remain incomplete.
+                // Prompt ONCE on the first V51 launch when checks remain incomplete.
                 // Do not automatically reprompt after a denial or every resume.
                 val approved = PermissionSetupSteps.allApproved(currentSetupSteps())
-                val prompted = prefs.getBoolean(SetupFirstLaunchPolicy.V42_PROMPTED, false)
+                val prompted = prefs.getBoolean(SetupFirstLaunchPolicy.V51_PROMPTED, false)
                 if (SetupFirstLaunchPolicy.shouldBegin(approved, prompted)) {
                     // No calls start as a result of installing or opening this app.
                     StartupMode.clearPending(this@MainActivity)
                     if (prefs.edit()
-                            .putBoolean(SetupFirstLaunchPolicy.V42_PROMPTED, true)
+                            .putBoolean(SetupFirstLaunchPolicy.V51_PROMPTED, true)
                             .putBoolean("guided_setup_started_v136", true)
                             .putBoolean("guided_setup_complete_v136", false)
                             .commit()) {
+                        showPhoneSetup = true
+                        prefs.edit().putBoolean("setup_panel_expanded_v48", true).apply()
                         beginGuidedSetup()
                     } else {
                         status = "Setup needs approval. Tap Help Me Set Up to continue."
