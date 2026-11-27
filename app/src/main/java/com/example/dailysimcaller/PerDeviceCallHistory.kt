@@ -151,6 +151,7 @@ internal object PerDeviceCallHistory {
             }
             database(context).update(TABLE, values, "id=?", arrayOf(record.rowId.toString()))
             version++
+            CallLogSync.queueImmediate(context)
         }
     }
 

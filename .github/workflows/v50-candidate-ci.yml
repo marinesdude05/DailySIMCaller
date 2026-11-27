@@ -1,0 +1,29 @@
+name: V50 candidate compile check
+on:
+  push:
+    branches: ['fix/v50-opt-in-device-registration']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compile and test candidate (private destinations intentionally disabled)
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v50-internal-compile-check-not-for-deployment
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

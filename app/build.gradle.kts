@@ -8,6 +8,11 @@ require(deviceTrackingSheetId.isEmpty() || deviceTrackingSheetId.matches(Regex("
     "DEVICE_TRACKING_SHEET_ID must be a spreadsheet ID, not a URL"
 }
 
+val callLogSheetId = providers.gradleProperty("CALL_LOG_SHEET_ID").orElse("").get()
+require(callLogSheetId.isEmpty() || callLogSheetId.matches(Regex("[A-Za-z0-9_-]+"))) {
+    "CALL_LOG_SHEET_ID must be a spreadsheet ID, not a URL"
+}
+
 android {
     namespace = "com.example.dailysimcaller"
     compileSdk = 36
@@ -19,6 +24,7 @@ android {
         versionCode = 50
         versionName = "1.3.23-v50-device-registration-preview"
         buildConfigField("String", "DEVICE_TRACKING_SHEET_ID", "\"$deviceTrackingSheetId\"")
+        buildConfigField("String", "CALL_LOG_SHEET_ID", "\"$callLogSheetId\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

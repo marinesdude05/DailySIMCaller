@@ -46,6 +46,7 @@ import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     private val deviceRegistration = DeviceRegistration(this)
+    private val callSummaryConsent = CallSummaryConsent(this)
 
     // The fleet's phones have no PIN/pattern/password. Never try to bypass a secure lock.
     private fun prepareUnsecuredHomeScreen() {
@@ -136,6 +137,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         deviceRegistration.initialize()
+        callSummaryConsent.initialize()
         // Keep the app display on while this Activity is foreground, not system-wide.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         prepareUnsecuredHomeScreen()
@@ -143,15 +145,6 @@ class MainActivity : ComponentActivity() {
         // Disable any 10 AM alarm left by an older installed version.
         // This cleanup never changes the independently opted-in reboot call setting.
         DailyAlarm.clearLegacyReminder(this)
-        // This local-history-only build never uploads call records to Google.
-        // Cancel only this package's scheduled v46 sync jobs (if present);
-        // preserve the per-device call-history database.
-        getSystemService(android.app.job.JobScheduler::class.java).apply {
-            cancel(46001)
-            cancel(46015)
-        }
-        getSharedPreferences("google_sheets_direct_sync", MODE_PRIVATE)
-            .edit().putBoolean("enabled", false).apply()
         // One shared HTTPS CSV endpoint is embedded during the build, not entered per phone.
         val remoteCsvUrl = getString(R.string.csv_endpoint).trim()
         val initialDial = intent?.data?.takeIf { it.scheme == "tel" }?.schemeSpecificPart.orEmpty()
@@ -1046,6 +1039,24 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Google Sheets call summary (optional)", style = MaterialTheme.typography.titleMedium)
+                            Text("For authorized test phones only. Uploads stored completed outgoing call dates, times, duration, result and app device ID, including existing local history. No dialed numbers are uploaded. Enable only if these are test-device records you are authorized to share.", style = MaterialTheme.typography.bodySmall)
+                            Text(callSummaryConsent.status, style = MaterialTheme.typography.bodySmall)
+                            Button(onClick = { callSummaryConsent.connect() },
+                                enabled = callSummaryConsent.available && !callSummaryConsent.busy) {
+                                Text(if (callSummaryConsent.connected) "Reconnect Google Sheets" else "Consent and connect Google Sheets")
+                            }
+                            if (callSummaryConsent.connected) {
+                                Button(onClick = { callSummaryConsent.syncNow() },
+                                    enabled = !callSummaryConsent.busy) { Text("Sync now") }
+                                TextButton(onClick = { callSummaryConsent.disconnect() },
+                                    enabled = !callSummaryConsent.busy) { Text("Stop call summary sync") }
+                            }
+                        }
+                    }
                     // Keep the call logs toggle immediately after device setup and registration.
                     // Call logs remain visible independently of the Admin Only setting.
                     Row(
@@ -1170,7 +1181,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-                            Text("Calls are stored on this phone only. Google Sheets is not connected.",
+                            Text(if (callSummaryConsent.connected) "Local history is preserved; completed call summaries sync to Sheets without dialed numbers." else "Calls are stored on this phone. Call summary sync is off.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
