@@ -3,6 +3,11 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val deviceTrackingSheetId = providers.gradleProperty("DEVICE_TRACKING_SHEET_ID").orElse("").get()
+require(deviceTrackingSheetId.isEmpty() || deviceTrackingSheetId.matches(Regex("[A-Za-z0-9_-]+"))) {
+    "DEVICE_TRACKING_SHEET_ID must be a spreadsheet ID, not a URL"
+}
+
 android {
     namespace = "com.example.dailysimcaller"
     compileSdk = 36
@@ -11,8 +16,9 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 49
-        versionName = "1.3.22-v49-calendar-week-preview"
+        versionCode = 50
+        versionName = "1.3.23-v50-device-registration-preview"
+        buildConfigField("String", "DEVICE_TRACKING_SHEET_ID", "\"$deviceTrackingSheetId\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -35,6 +41,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -46,6 +53,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.play.services.auth)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
