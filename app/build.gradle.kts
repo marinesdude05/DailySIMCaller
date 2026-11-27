@@ -21,8 +21,8 @@ android {
         applicationId = "com.example.dailysimcaller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 50
-        versionName = "1.3.23-v50-device-registration-preview"
+        versionCode = 51
+        versionName = "1.3.24-v51-guided-setup-preview"
         buildConfigField("String", "DEVICE_TRACKING_SHEET_ID", "\"$deviceTrackingSheetId\"")
         buildConfigField("String", "CALL_LOG_SHEET_ID", "\"$callLogSheetId\"")
 
