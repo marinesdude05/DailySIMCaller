@@ -19,6 +19,7 @@ class BootReceiver : BroadcastReceiver() {
         }
         // Armed once per reboot, but only after the user opted into v1.3.4 auto-calling.
         // A visible, unlocked Home activity handles the queue, never this receiver.
+        CallLogSync.schedule(context)
         StartupMode.armAfterBoot(context)
         if (BootPreparation.isEnabled(context)) BootPreparation.schedule(context)
         // Older releases may have left a 10 AM reminder pending.

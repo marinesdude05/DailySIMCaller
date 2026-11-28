@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -45,8 +46,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
-    private val deviceRegistration = DeviceRegistration(this)
-    private val callSummaryConsent = CallSummaryConsent(this)
 
     // The fleet's phones have no PIN/pattern/password. Never try to bypass a secure lock.
     private fun prepareUnsecuredHomeScreen() {
@@ -136,8 +135,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        deviceRegistration.initialize()
-        callSummaryConsent.initialize()
+        CallLogSync.schedule(this)
         // Keep the app display on while this Activity is foreground, not system-wide.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         prepareUnsecuredHomeScreen()
@@ -431,6 +429,19 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val syncCredentialPicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocument()
+            ) { uri ->
+                if (uri != null) {
+                    lifecycleScope.launch {
+                        status = if (CallLogSync.provision(this@MainActivity, uri)) {
+                            "Background sync is configured."
+                        } else {
+                            "Could not activate background sync. Check the device credential and connection."
+                        }
+                    }
+                }
+            }
             val csvPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
                 if (uri != null && remoteCsvUrl.isBlank()) {
                     try {
@@ -1026,40 +1037,6 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-                    // Optional enrollment; only an anonymous installation ID is reported.
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Device registration (optional)", style = MaterialTheme.typography.titleMedium)
-                            Text("Register this authorized test installation in the management dashboard. Sends only a random app ID, time and app version; no phone numbers, call history, contacts or location.", style = MaterialTheme.typography.bodySmall)
-                            Text(deviceRegistration.status, style = MaterialTheme.typography.bodySmall)
-                            if (!deviceRegistration.registered) {
-                                Button(onClick = { deviceRegistration.requestRegistration() },
-                                    enabled = !deviceRegistration.busy && deviceRegistration.configured) {
-                                    Text("Consent and register device")
-                                }
-                            }
-                        }
-                    }
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Google Sheets call summary (optional)", style = MaterialTheme.typography.titleMedium)
-                            Text("For authorized test phones only. Uploads stored completed outgoing call dates, times, duration, result and app device ID, including existing local history. No dialed numbers are uploaded. Enable only if these are test-device records you are authorized to share.", style = MaterialTheme.typography.bodySmall)
-                            Text(callSummaryConsent.status, style = MaterialTheme.typography.bodySmall)
-                            Button(onClick = { callSummaryConsent.connect() },
-                                enabled = callSummaryConsent.available && !callSummaryConsent.busy) {
-                                Text(if (callSummaryConsent.connected) "Reconnect Google Sheets" else "Consent and connect Google Sheets")
-                            }
-                            if (callSummaryConsent.connected) {
-                                Button(onClick = { callSummaryConsent.syncNow() },
-                                    enabled = !callSummaryConsent.busy) { Text("Sync now") }
-                                TextButton(onClick = { callSummaryConsent.disconnect() },
-                                    enabled = !callSummaryConsent.busy) { Text("Stop call summary sync") }
-                            }
-                        }
-                    }
-                    // Keep the call logs toggle immediately after device setup and registration.
                     // Call logs remain visible independently of the Admin Only setting.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1183,9 +1160,6 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-                            Text(if (callSummaryConsent.connected) "Local history is preserved; completed call summaries sync to Sheets without dialed numbers." else "Calls are stored on this phone. Call summary sync is off.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     TextButton(
@@ -1270,6 +1244,19 @@ class MainActivity : ComponentActivity() {
                     }
                     if (showAdminOnly) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (CallLogSync.available) {
+                                val identity = remember { runCatching { CallLogSync.identity(this@MainActivity) }.getOrNull() }
+                                if (identity != null) {
+                                    SelectionContainer {
+                                        Text("Sync device " + identity.deviceId + "\nInstallation " + identity.installationId)
+                                    }
+                                }
+                                OutlinedButton(onClick = {
+                                    syncCredentialPicker.launch(arrayOf("application/json", "text/plain"))
+                                }, enabled = identity != null) {
+                                    Text("Import sync credential")
+                                }
+                            }
                         HorizontalDivider()
                         Text("Default Apps (managed devices)",
                             style = MaterialTheme.typography.titleMedium)

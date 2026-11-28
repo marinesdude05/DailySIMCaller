@@ -12,6 +12,17 @@ function digest_(s) {
 function check_(condition,code) { if (!condition) throw new Error(code); }
 function output_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
 function doGet() { return output_({ok:true,service:'Daily SIM Caller',protocol:1}); }
+
+function verifyDestinations() {
+  const p = PropertiesService.getScriptProperties();
+  const calls = SpreadsheetApp.openById(p.getProperty('CALL_LOG_SHEET_ID'));
+  const tracker = SpreadsheetApp.openById(p.getProperty('DEVICE_TRACKING_SHEET_ID'));
+  check_(calls.getId() !== tracker.getId(), 'DESTINATION_MISMATCH');
+  const events = tracker.getSheetByName('Device Events');
+  check_(events && events.getMaxColumns() >= 6, 'TRACKING_SCHEMA');
+  Sheets.Spreadsheets.get(calls.getId(), {fields:'spreadsheetId'});
+}
+
 // Admin-only editor function. Set ENROLL_DEVICE_ID and ENROLL_INSTALLATION_ID in
 // Script Properties before running. Copy the generated token from execution log
 // to the authorized device using a private provisioning channel; then clear log access.
@@ -26,7 +37,7 @@ function issueDeviceCredential() {
     p.setProperty('device:'+device,JSON.stringify({installation,hash:digest_(token),enabled:true}));
     p.deleteProperty('ENROLL_DEVICE_ID'); p.deleteProperty('ENROLL_INSTALLATION_ID');
     // The editor execution log is restricted to administrators. Treat as secret.
-    console.log(token);
+    console.log(JSON.stringify({token}));
   } finally {lock.releaseLock();}
 }
 function doPost(e) {
